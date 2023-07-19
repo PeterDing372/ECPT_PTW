@@ -50,3 +50,19 @@ class GCDSpec extends AnyFreeSpec with ChiselScalatestTester {
     }
   }
 }
+
+/* GCD testing */
+// class GCDSpec extends AnyFreeSpec with ChiselScalatestTester {
+//   "Gcd should calculate proper greatest common denominator" in {
+
+//     test( new GCD ) { c =>
+//         // println("Testing HelloModule:")
+//         c.io.value1.poke(12.U)
+//         c.io.value2.poke(24.U)
+//         c.io.loadingValues.poke(true.B)
+//         c.clock.step(1) 
+//         c.io.outputGCD(12.U)
+//         c.io.outputValid(true.B)
+//     }
+//   }
+// }
