@@ -1,39 +1,75 @@
 // See README.md for license details.
 
-ThisBuild / scalaVersion     := "2.13.8"
-ThisBuild / version          := "0.1.0"
-ThisBuild / organization     := "com.github.peterding372"
+// ThisBuild / scalaVersion     := "2.13.8"
+// ThisBuild / version          := "0.1.0"
+// ThisBuild / organization     := "com.github.peterding372"
+
+// val chiselVersion = "3.5.4"
+
+// lazy val root = (project in file("."))
+//   .settings(
+//     name := "my_template",
+//     libraryDependencies ++= Seq(
+//       "edu.berkeley.cs" %% "chisel3" % chiselVersion,
+//       "edu.berkeley.cs" %% "chiseltest" % "0.5.4" % "test"
+//     ),
+//     scalacOptions ++= Seq(
+//       "-language:reflectiveCalls",
+//       "-deprecation",
+//       "-feature",
+//       "-Xcheckinit",
+//       "-P:chiselplugin:genBundleElements",
+//     ),
+//     addCompilerPlugin("edu.berkeley.cs" % "chisel3-plugin" % chiselVersion cross CrossVersion.full),
+//   )
+
 
 val chiselVersion = "3.5.4"
+scalaVersion := "2.12.16"
 
-lazy val root = (project in file("."))
+lazy val commonSettings = Seq(
+  scalacOptions ++= Seq(
+    "-language:reflectiveCalls",
+    "-deprecation",
+    "-unchecked",
+    "-feature",
+    "-Xsource:2.11"
+  ),
+  libraryDependencies ++= Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value),
+  libraryDependencies ++= Seq("org.json4s" %% "json4s-jackson" % "3.6.12"),
+  libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "3.2.12" % "test"),
+  addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.full))
+)
+
+lazy val chiselSettings = Seq(
+  libraryDependencies ++= Seq(
+    "edu.berkeley.cs" %% "chisel3" % chiselVersion,
+    "edu.berkeley.cs" %% "chiseltest" % "0.5.4"
+  ),
+  addCompilerPlugin(("edu.berkeley.cs" % "chisel3-plugin" % chiselVersion).cross(CrossVersion.full))
+)
+
+lazy val `api-config-chipsalliance` = (project in file("rocket-chip/api-config-chipsalliance/build-rules/sbt"))
+  .settings(commonSettings)
+
+lazy val hardfloat = (project in file("rocket-chip/hardfloat"))
+  .settings(commonSettings, chiselSettings)
+
+lazy val rocketMacros = (project in file("rocket-chip/macros"))
+  .settings(commonSettings)
+
+lazy val rocketchip = (Project("rocket-chip", file("rocket-chip/src")))
+  .settings(commonSettings, chiselSettings)
   .settings(
-    name := "my_template",
-    libraryDependencies ++= Seq(
-      "edu.berkeley.cs" %% "chisel3" % chiselVersion,
-      "edu.berkeley.cs" %% "chiseltest" % "0.5.4" % "test"
-    ),
-    scalacOptions ++= Seq(
-      "-language:reflectiveCalls",
-      "-deprecation",
-      "-feature",
-      "-Xcheckinit",
-      "-P:chiselplugin:genBundleElements",
-    ),
-    addCompilerPlugin("edu.berkeley.cs" % "chisel3-plugin" % chiselVersion cross CrossVersion.full),
+    Compile / scalaSource := baseDirectory.value / "main" / "scala",
+    Compile / resourceDirectory := baseDirectory.value / "main" / "resources"
   )
+  .dependsOn(`api-config-chipsalliance`)
+  .dependsOn(hardfloat)
+  .dependsOn(rocketMacros)
 
-  // libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "5.0-SNAPSHOT"
+lazy val example = (project in file("."))
+  .settings(commonSettings, chiselSettings)
+  .dependsOn(rocketchip)
 
-//   def scalacOptionsVersion(scalaVersion: String): Seq[String] = {
-//   Seq() ++ {
-//     // If we're building with Scala > 2.11, enable the compile option
-//     //  switch to support our anonymous Bundle definitions:
-//     //  https://github.com/scala/bug/issues/10047
-//     CrossVersion.partialVersion(scalaVersion) match {
-//       case Some((2, scalaMajor: Long)) if scalaMajor < 12 => Seq()
-//       case _ => Seq("-Xsource:2.11")
-//     }
-//   }
-// }
 
