@@ -24,54 +24,36 @@
 //   )
 
 
-val chiselVersion = "3.5.6"
+val chiselVersion = "3.5.4"
 
 lazy val commonSettings = Seq(
-  scalaVersion := "2.13.10",
+  scalaVersion := "2.12.10",
   scalacOptions ++= Seq(
+    "-language:reflectiveCalls",
     "-deprecation",
-    "-unchecked"
+    "-unchecked",
+    "-feature",
+    "-Xsource:2.11"
   ),
   libraryDependencies ++= Seq(
     "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-    "org.json4s" %% "json4s-jackson" % "4.0.6",
-    "org.scalatest" %% "scalatest" % "3.2.14" % "test"
+    "org.json4s" %% "json4s-jackson" % "3.6.12",
+    "org.scalatest" %% "scalatest" % "3.2.12" % "test"
   ),
-  publishMavenStyle := true,
-  publishArtifact in Test := false,
-  pomIncludeRepository := { x => false },
-  pomExtra := <url>https://github.com/chipsalliance/rocket-chip</url>
-  <licenses>
-    <license>
-      <name>Apache 2</name>
-      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
-      <distribution>repo</distribution>
-    </license>
-    <license>
-      <name>BSD-style</name>
-        <url>http://www.opensource.org/licenses/bsd-license.php</url>
-        <distribution>repo</distribution>
-      </license>
-    </licenses>
-    <scm>
-      <url>https://github.com/chipsalliance/rocketchip.git</url>
-      <connection>scm:git:github.com/chipsalliance/rocketchip.git</connection>
-    </scm>
+  addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.full))
 )
 
 lazy val chiselSettings = Seq(
   libraryDependencies ++= Seq(
     "edu.berkeley.cs" %% "chisel3" % chiselVersion,
-    "edu.berkeley.cs" %% "chiseltest" % "0.5.5"
+    "edu.berkeley.cs" %% "chiseltest" % "0.5.4"
   ),
   addCompilerPlugin(("edu.berkeley.cs" % "chisel3-plugin" % chiselVersion).cross(CrossVersion.full))
 )
 
-lazy val cde = (project in file("rocket-chip/cde"))
+/* Switchable */
+lazy val `api-config-chipsalliance` = (project in file("rocket-chip/api-config-chipsalliance/build-rules/sbt"))
   .settings(commonSettings)
-  .settings(
-    Compile / scalaSource := baseDirectory.value / "cde/src/chipsalliance/rocketchip"
-  )
 
 lazy val hardfloat = (project in file("rocket-chip/hardfloat"))
   .settings(commonSettings, chiselSettings)
@@ -82,22 +64,45 @@ lazy val rocketMacros = (project in file("rocket-chip/macros"))
 lazy val rocketchip = (Project("rocket-chip", file("rocket-chip/src")))
   .settings(commonSettings, chiselSettings)
   .settings(
-    Compile / scalaSource       := baseDirectory.value / "main" / "scala",
+    Compile / scalaSource := baseDirectory.value / "main" / "scala",
     Compile / resourceDirectory := baseDirectory.value / "main" / "resources"
   )
-  .dependsOn(cde)
+  .dependsOn(`api-config-chipsalliance`)
   .dependsOn(hardfloat)
   .dependsOn(rocketMacros)
+/* Switchable */
 
-lazy val boom = (Project("riscv-boom", file("riscv-boom/src")))
-  .settings(commonSettings, chiselSettings)
-  .settings(
-    Compile / scalaSource       := baseDirectory.value / "main" / "scala",
-    Compile / resourceDirectory := baseDirectory.value / "main" / "resources"
-  )
-lazy val `api-config-chipsalliance` = (project in file("api-config-chipsalliance/build-rules/sbt"))
-  .settings(commonSettings)
-  .settings(publishArtifact := false)
+// lazy val cde = (project in file("rocket-chip/cde"))
+//   .settings(commonSettings)
+//   .settings(
+//     Compile / scalaSource := baseDirectory.value / "cde/src/chipsalliance/rocketchip"
+//   )
+
+// lazy val hardfloat = (project in file("rocket-chip/hardfloat"))
+//   .settings(commonSettings, chiselSettings)
+
+// lazy val rocketMacros = (project in file("rocket-chip/macros"))
+//   .settings(commonSettings)
+
+// lazy val rocketchip = (Project("rocket-chip", file("rocket-chip/src")))
+//   .settings(commonSettings, chiselSettings)
+//   .settings(
+//     Compile / scalaSource       := baseDirectory.value / "main" / "scala",
+//     Compile / resourceDirectory := baseDirectory.value / "main" / "resources"
+//   )
+//   .dependsOn(cde)
+//   .dependsOn(hardfloat)
+//   .dependsOn(rocketMacros)
+
+// lazy val boom = (Project("riscv-boom", file("riscv-boom/src")))
+//   .settings(commonSettings, chiselSettings)
+//   .settings(
+//     Compile / scalaSource       := baseDirectory.value / "main" / "scala",
+//     Compile / resourceDirectory := baseDirectory.value / "main" / "resources"
+//   )
+// lazy val `api-config-chipsalliance` = (project in file("api-config-chipsalliance/build-rules/sbt"))
+//   .settings(commonSettings)
+//   .settings(publishArtifact := false)
 
 lazy val ECPT = (project in file("."))
   .settings(commonSettings, chiselSettings)
