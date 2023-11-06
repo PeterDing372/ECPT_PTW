@@ -345,6 +345,6 @@ hs_err_pid*
 .vscode/
 project/
 
-rocket-chip/
+# rocket-chip/
 
 
