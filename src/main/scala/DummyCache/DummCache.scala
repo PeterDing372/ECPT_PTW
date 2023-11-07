@@ -8,6 +8,12 @@ import chipsalliance.rocketchip.config._
 // import ECPT.PTW._
 import ECPT.Params._
 
+// class debugPorts_DummyCache (implicit p : Parameters) extends MyCoreBundle()(p) {
+//   val debug_state = Output(UInt(3.W))
+//   val debug_counter = Output(UInt(log2Ceil(8).W))
+//   val debug_counter_trigger = Output(Bool())
+//   val req_addr = Output(UInt(vpnBits.W))
+// }
 
 
 /* Dummmy Cache module for response */
@@ -25,15 +31,21 @@ class DummmyCache (implicit p :  Parameters) extends MyL1HellaCacheModule()(p) {
   val request = Decoupled(Wire(new MyHellaCacheReq))
   request := io.ptw.req
 
+  val response = Valid(Wire(new MyHellaCacheResp))
+  io.ptw.resp := response
 
   val cacheMem = Mem(8, new MyCacheLine) // declare cache data array
-
+  /* Connection directly to cacheMem */
   val idx = addrToIdx(io.cpu.bits.addr)  // Extract index from address
   val newCacheLine = Wire(new MyCacheLine)
   val oldCacheLine = cacheMem.read(idx) // io.cpu.valid && io.cpu.bits.write
 
 
-   // On write, update the cache line with new data at the specific offset
+  /* On read mask the cacheline and return word block */
+  val readOffeset = addrToOffset(io.ptw.req.bits.addr)
+  response.bits.data :=  oldCacheLine.data(readOffeset)
+
+  // On write, update the cache line with new data at the specific offset
   when(io.cpu.valid && io.cpu.bits.write) {
     val offset = addrToOffset(io.cpu.bits.addr)  // Extract offset from address
     val wmask = Wire(Vec(8, Bool()))
@@ -50,11 +62,12 @@ class DummmyCache (implicit p :  Parameters) extends MyL1HellaCacheModule()(p) {
         newCacheLine.data(i) := oldCacheLine.data(i)
       }
     }
+    newCacheLine.valid := true.B  // Set the valid bit to true
+    newCacheLine.tag := io.cpu.bits.addr(pgUntagBits + tagBits, pgUntagBits) // Set the tag to the provided address
+  } .otherwise {
+    newCacheLine := oldCacheLine
   }
-
-  newCacheLine.valid := true.B  // Set the valid bit to true
-  newCacheLine.tag := io.cpu.bits.addr(pgUntagBits + tagBits, pgUntagBits) // Set the tag to the provided address
-
+  
   // Perform the write to the cache memory
   cacheMem.write(idx, newCacheLine)
 
@@ -71,6 +84,6 @@ class MyCacheLine (implicit p : Parameters) extends MyL1HellaCacheBundle()(p) {
 class MyCacheDataReq(implicit p : Parameters) extends MyL1HellaCacheBundle()(p) {
   val write = Bool()
   val addr = UInt(vaddrBitsExtended.W)
-  val idx = UInt(idxBits.W)
+  // val idx = UInt(idxBits.W)
   val wdata = UInt(coreDataBits.W)
 }

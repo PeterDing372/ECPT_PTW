@@ -22,7 +22,7 @@ import ECPT.Params._
 /* 
  * This is ports for the ECPT_PTW for us to poke what is happening inside 
  */
-class debugPorts (implicit p : Parameters) extends MyCoreBundle()(p) {
+class debugPorts_PTW (implicit p : Parameters) extends MyCoreBundle()(p) {
   val debug_state = Output(UInt(3.W))
   val debug_counter = Output(UInt(log2Ceil(8).W))
   val debug_counter_trigger = Output(Bool())
@@ -61,7 +61,7 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
       * contains CSRs info and performance statistics
       */
     val dpath = new MyDatapathPTWIO
-    val debug = new debugPorts
+    val debug = new debugPorts_PTW
     val cache_valid = Input(Bool())
   })
 
