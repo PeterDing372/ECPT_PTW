@@ -1,4 +1,4 @@
-package ECPT.PTW
+package ECPT.Params
 
 // import chisel3._
 // import chisel3.util._
@@ -106,7 +106,7 @@ trait MyHasTileParameters extends MyHasNonDiplomaticTileParameters {
   def vpnBits: Int = vaddrBits - pgIdxBits
   def ppnBits: Int = paddrBits - pgIdxBits
   def vpnBitsExtended: Int = vpnBits + (vaddrBits < xLen).toInt
-  def vaddrBitsExtended: Int = vpnBitsExtended + pgIdxBits
+  def vaddrBitsExtended: Int = vpnBitsExtended + pgIdxBits // 27 + 12 = 39
 }
 
 // /** These parameters values are not computed based on diplomacy negotiation

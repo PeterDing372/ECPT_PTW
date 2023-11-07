@@ -1,4 +1,4 @@
-package ECPT.PTW
+package ECPT.Params
 
 import chisel3._
 import chipsalliance.rocketchip.config._

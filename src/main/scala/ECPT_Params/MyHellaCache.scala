@@ -1,4 +1,4 @@
-package ECPT.PTW
+package ECPT.Params
 
 import chisel3._
 import chisel3.util._
@@ -7,6 +7,15 @@ import chipsalliance.rocketchip.config._
 
 import freechips.rocketchip.util._
 import freechips.rocketchip.rocket._
+
+
+
+
+abstract class MyL1HellaCacheModule(implicit val p: Parameters) extends Module
+  with MyHasL1HellaCacheParameters
+
+abstract class MyL1HellaCacheBundle(implicit val p: Parameters) extends ParameterizedBundle()(p)
+  with MyHasL1HellaCacheParameters
 
 trait MyHasCoreData extends MyHasCoreParameters {
   val data = UInt(coreDataBits.W)
@@ -74,9 +83,9 @@ trait MyHasL1HellaCacheParameters extends MyHasL1CacheParameters with MyHasCoreP
   def offsetlsb = wordOffBits
   def rowWords = rowBits/wordBits
   def doNarrowRead = coreDataBits * nWays % rowBits == 0
-  def eccBytes = cacheParams.dataECCBytes
-  val eccBits = cacheParams.dataECCBytes * 8
-  val encBits = cacheParams.dataCode.width(eccBits)
+  def eccBytes = cacheParams.dataECCBytes // 1
+  val eccBits = cacheParams.dataECCBytes * 8 // 8
+  val encBits = cacheParams.dataCode.width(eccBits) // 8
   val encWordBits = encBits * (wordBits / eccBits)
   def encDataBits = cacheParams.dataCode.width(coreDataBits) // NBDCache only
   def encRowBits = encDataBits*rowWords
@@ -105,3 +114,44 @@ class MyHellaCacheResp(implicit p: Parameters) extends MyCoreBundle()(p)
 }
 
 class MyHellaCacheWriteData(implicit p: Parameters) extends MyCoreBundle()(p) with MyHasCoreData
+
+case class MyDCacheParams(
+    nSets: Int = 64,
+    nWays: Int = 4,
+    rowBits: Int = 64,
+    subWordBits: Option[Int] = None,
+    replacementPolicy: String = "random",
+    nTLBSets: Int = 1,
+    nTLBWays: Int = 32,
+    nTLBBasePageSectors: Int = 4,
+    nTLBSuperpages: Int = 4,
+    tagECC: Option[String] = None,
+    dataECC: Option[String] = None,
+    dataECCBytes: Int = 1,
+    nMSHRs: Int = 1,
+    nSDQ: Int = 17,
+    nRPQ: Int = 16,
+    nMMIOs: Int = 1,
+    blockBytes: Int = 64,
+    separateUncachedResp: Boolean = false,
+    acquireBeforeRelease: Boolean = false,
+    pipelineWayMux: Boolean = false,
+    clockGate: Boolean = false,
+    scratch: Option[BigInt] = None) extends L1CacheParams {
+
+  def tagCode: Code = Code.fromString(tagECC)
+  def dataCode: Code = Code.fromString(dataECC)
+
+  def dataScratchpadBytes: Int = scratch.map(_ => nSets*blockBytes).getOrElse(0)
+
+  def replacement = new RandomReplacement(nWays)
+
+  def silentDrop: Boolean = !acquireBeforeRelease
+
+  require((!scratch.isDefined || nWays == 1),
+    "Scratchpad only allowed in direct-mapped cache.")
+  require((!scratch.isDefined || nMSHRs == 0),
+    "Scratchpad only allowed in blocking cache.")
+  if (scratch.isEmpty)
+    require(isPow2(nSets), s"nSets($nSets) must be pow2")
+}

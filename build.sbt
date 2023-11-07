@@ -70,6 +70,9 @@ lazy val rocketchip = (Project("rocket-chip", file("rocket-chip/src")))
   .dependsOn(`api-config-chipsalliance`)
   .dependsOn(hardfloat)
   .dependsOn(rocketMacros)
+lazy val ECPT = (project in file("."))
+  .settings(commonSettings, chiselSettings)
+  .dependsOn(rocketchip)
 /* Switchable */
 
 // lazy val cde = (project in file("rocket-chip/cde"))
@@ -104,7 +107,5 @@ lazy val rocketchip = (Project("rocket-chip", file("rocket-chip/src")))
 //   .settings(commonSettings)
 //   .settings(publishArtifact := false)
 
-lazy val ECPT = (project in file("."))
-  .settings(commonSettings, chiselSettings)
-  .dependsOn(rocketchip)
+
 

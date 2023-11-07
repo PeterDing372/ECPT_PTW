@@ -16,9 +16,12 @@ import freechips.rocketchip.util.property
 
 import scala.collection.mutable.ListBuffer
 import freechips.rocketchip.rocket._
+import ECPT.Params._
 
 
-
+/* 
+ * This is ports for the ECPT_PTW for us to poke what is happening inside 
+ */
 class debugPorts (implicit p : Parameters) extends MyCoreBundle()(p) {
   val debug_state = Output(UInt(3.W))
   val debug_counter = Output(UInt(log2Ceil(8).W))
@@ -27,11 +30,26 @@ class debugPorts (implicit p : Parameters) extends MyCoreBundle()(p) {
   
 }
 
+/* 
+ * ECPTE_CacheLine holds the whole cache_line in a register 
+ * to get tag match for ECPT 
+ */
+class ECPTE_CacheLine (implicit p : Parameters) extends MyCoreBundle()(p) {
+  /* Contains a total of 8 PTE */
+  val ptes = Vec(8, new PTE)
 
-/** ECPT_PTW performs page table walk for high level TLB
+  def fetchTag() : UInt = {
+    ptes.map(_.reserved_for_future(2,0)).reduce((a,b) => Cat(a,b))
+  }
+
+}
+
+
+/**
+  * ECPT_PTW performs a page table walk for a high-level TLB.
   */
-// class ECPT_PTW(n: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(p) {
 class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
+// class ECPT_PTW(n: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(p) {
 
   val io = IO(new Bundle {
     /* 1 TLB */
@@ -54,13 +72,15 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
 
   val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_done :: Nil = Enum(5)
   val state_reg = RegInit(s_ready)
-  val next_state = WireDefault(state_reg) // WireDefault makes sure the next state will remain current state
-  state_reg := next_state // stage_reg assignment needs to be place above all other assignment
+  val next_state = WireDefault(state_reg) 
+  // WireDefault makes sure the next state will remain current state
+  state_reg := next_state 
+  // stage_reg assignment needs to be place above all other assignment
   
   /* Internal hardware modules */
   val counter = Module(new CounterWithTrigger(8))
-  val H1_CRC = Module(new CRC_hash_FSM(init_pt_bits, H1_poly, 27)) // n: Int, g: Long, data_len: Int
-  val H2_CRC = Module(new CRC_hash_FSM(init_pt_bits, H2_poly, 27))
+  val H1_CRC = Module(new CRC_hash_FSM(init_pt_bits, H1_poly, vpnBits)) // n: Int, g: Long, data_len: Int
+  val H2_CRC = Module(new CRC_hash_FSM(init_pt_bits, H2_poly, vpnBits))
   
   /* -------- START Variable declaration -------- */
   val tlb_req = Reg(new MyPTWReq)
@@ -68,6 +88,13 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   val vpn_h2 = Reg(UInt(init_pt_bits.W))
   val both_hashing_done = WireDefault(false.B)
   val counter_trigger = WireDefault(false.B)
+  /* These are two register to cache the whole cacheline of ECPT PTE */
+  val cached_line_T1 = Reg(new ECPTE_CacheLine)
+  val cached_line_T2 = Reg(new ECPTE_CacheLine)
+  val cache_valid = Wire(Bool())
+  val cache_resp = Wire(new MyHellaCacheResp)
+  val traverse_count = Wire(UInt(lgCacheBlockBytes.W))
+  val cache_req = Decoupled(Wire(new MyHellaCacheReq))
   
   /* -------- END Variable declaration -------- */
 
@@ -75,20 +102,30 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   H1_CRC.io.start := (state_reg === s_hashing)
   H2_CRC.io.start := (state_reg === s_hashing)
   both_hashing_done := (H1_CRC.io.done && H2_CRC.io.done)
+  /* Cache resps related */
+  cache_valid := io.mem.resp.valid
+  cache_resp := io.mem.resp.bits
+  traverse_count := counter.io.count
+  /* Cache request handling */
+  io.mem.req := cache_req
+  cache_req.valid := (state_reg === s_traverse1) || (state_reg === s_traverse2) 
+  // cache_req.ready := state_reg === 
 
   /* CRC module path statements */
   H1_CRC.io.data_in := Mux((state_reg === s_hashing), tlb_req.addr, 0.U)
   H2_CRC.io.data_in := Mux((state_reg === s_hashing), tlb_req.addr, 0.U)
-  when(H1_CRC.io.done){
+  when (H1_CRC.io.done) {
     vpn_h1 := H1_CRC.io.data_out
   }
-  when(H2_CRC.io.done){
+  when (H2_CRC.io.done) {
     vpn_h2 := H2_CRC.io.data_out
   } 
-  // val cache_valid = true.B
+  
   io.requestor.req.ready := (state_reg === s_ready)
   counter.io.trigger := counter_trigger
-  counter_trigger := io.cache_valid && (state_reg === s_traverse1 || state_reg === s_traverse2)
+  counter_trigger := cache_valid && (state_reg === s_traverse1 || state_reg === s_traverse2)
+
+
   /* PTW FSM */
   switch (state_reg) {
     is (s_ready) {
@@ -96,6 +133,9 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
         tlb_req := io.requestor.req.bits.bits
       }
       next_state := Mux(io.requestor.req.valid, s_hashing, s_ready)
+      /* Flush the cached_line_TX */
+      cached_line_T1 := 0.U
+      cached_line_T2 := 0.U
     }
     /* Parallel Computation of hash values */
     is(s_hashing){
@@ -103,10 +143,17 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
     }
     /* START: sequentially request the whole cacheline */
     is (s_traverse1) {
-      next_state := Mux(counter.io.count === 7.U, s_traverse2, s_traverse1)
+      next_state := Mux(traverse_count === 7.U, s_traverse2, s_traverse1)
+      /* Logic for on loading cache response to the cached_line_T{1,2} */
+      when (cache_valid) {
+        cached_line_T1.ptes(traverse_count) := cache_resp.data
+      }
     }
     is (s_traverse2) {
-      next_state := Mux(counter.io.count === 7.U, s_done, s_traverse2)
+      next_state := Mux(traverse_count === 7.U, s_done, s_traverse2)
+      when (cache_valid) {
+        cached_line_T2.ptes(traverse_count) := cache_resp.data
+      }
     }
     /* END: sequentially request the whole cacheline */
     is (s_done) {
@@ -115,7 +162,7 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   }
   
   /* Debug signals */
-  io.debug.debug_counter := counter.io.count
+  io.debug.debug_counter := traverse_count
   io.debug.debug_state := state_reg
   io.debug.req_addr := tlb_req.addr
   io.debug.debug_counter_trigger := counter_trigger
