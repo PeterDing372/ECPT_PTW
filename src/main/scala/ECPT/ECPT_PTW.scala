@@ -208,8 +208,8 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   io.mem.req.bits.dprv := PRV.S.U   // PTW accesses are S-mode by definition
 
   // TODO: may change this when involve walk cache
-  io.mem.s1_kill := false.B  // s1_kill: kill previous cycle's req
-  io.mem.s2_kill := false.B
+  // io.mem.s1_kill := false.B  // s1_kill: kill previous cycle's req
+  // io.mem.s2_kill := false.B
   
 }
 

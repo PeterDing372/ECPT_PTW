@@ -1,4 +1,4 @@
-package ECPT.DummmyCache
+package ECPT.DummyCache
 
 import chisel3._
 import chiseltest._
@@ -9,13 +9,14 @@ import ECPT.Params._
 import os.write
 
 
-class DummmyCacheSpec extends AnyFreeSpec with ChiselScalatestTester{
+class DummyCacheSpec extends AnyFreeSpec with ChiselScalatestTester{
     // implicit val para = (new DefaultConfig).toInstance
-    implicit val para = (new myConfig(false)).toInstance
+    implicit val para = (new myConfig(true)).toInstance
+
 
     "DummyCache shoudl Store WDATA" in {
         test(new DummmyCache()(para) ) { c =>
-            println("SIMULATION: testing ECPT_PTW")
+            println("SIMULATION: testing DummyCache")
             val reader = c.io.ptw
             val writer = c.io.cpu
             c.clock.step(1) // do nothing
@@ -24,13 +25,21 @@ class DummmyCacheSpec extends AnyFreeSpec with ChiselScalatestTester{
             /* Write sequentially a whole cacheline */
             for (i <- 0 to 7) {
                 writer.valid.poke(1)
+                writer.bits.write.poke(1)
                 writer.bits.wdata.poke(1+i)
                 writer.bits.addr.poke(i)
                 c.clock.step(1) 
             }
+            /* Cancel write requests */
+            writer.valid.poke(0)
+            writer.bits.write.poke(0)
+            writer.bits.wdata.poke(11)
+            writer.bits.addr.poke(2)
+            c.clock.step(1) 
             /* Read and see if I can get correct value */ 
-            reader.req.bits.addr(2.U)
+            reader.req.bits.addr.poke(2.U)
             val readVal = reader.resp.bits.data.peek()
+            c.clock.step(1) 
             println(s"ReadVal $readVal")
             
         }

@@ -105,7 +105,7 @@ trait MyHasTileParameters extends MyHasNonDiplomaticTileParameters {
     }
   def vpnBits: Int = vaddrBits - pgIdxBits
   def ppnBits: Int = paddrBits - pgIdxBits
-  def vpnBitsExtended: Int = vpnBits + (vaddrBits < xLen).toInt
+  def vpnBitsExtended: Int = vpnBits + (vaddrBits < xLen).toInt // 28
   def vaddrBitsExtended: Int = vpnBitsExtended + pgIdxBits // 27 + 12 = 39
 }
 
