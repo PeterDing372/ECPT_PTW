@@ -165,6 +165,7 @@ trait MyHasNonDiplomaticTileParameters {
   def hartId: Int = staticIdForMetadataUseOnly
 
   def cacheBlockBytes = p(CacheBlockBytes)
+  // println(s"cacheBlockBytes: $cacheBlockBytes")
   def lgCacheBlockBytes = log2Up(cacheBlockBytes)
   def masterPortBeatBytes = p(SystemBusKey).beatBytes
 

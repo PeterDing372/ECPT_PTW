@@ -35,6 +35,7 @@ class DummmyCache (implicit p :  Parameters) extends MyL1HellaCacheModule()(p) {
   // val request = io.ptw.req // TODO
 
   val cacheData = Mem(8, Vec(8, UInt(coreDataBits.W))) // declare cache data array
+  val cacheTag = Mem(8, UInt(tagBits.W))
   /* Connection directly to cacheMem */
   val idx = Wire(UInt(MyIdxBits.W))
   val BlockOffeset = Wire(UInt(blockOffBits.W))
@@ -137,6 +138,7 @@ class DummyIO
 class MyCacheLine (implicit p : Parameters) extends MyL1HellaCacheBundle()(p) {
   val valid = Bool()
   val tag = UInt(tagBits.W)
+  println(s"tagBits: $tagBits")
   val data = Vec(8, UInt(coreDataBits.W))
 
 } 

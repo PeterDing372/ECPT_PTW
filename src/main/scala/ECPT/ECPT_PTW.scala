@@ -94,7 +94,6 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   val cache_valid = Wire(Bool())
   val cache_resp = Wire(new MyHellaCacheResp)
   val traverse_count = Wire(UInt(lgCacheBlockBytes.W))
-  val cache_req = Decoupled(Wire(new MyHellaCacheReq))
   
   /* -------- END Variable declaration -------- */
 
@@ -107,8 +106,7 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   cache_resp := io.mem.resp.bits
   traverse_count := counter.io.count
   /* Cache request handling */
-  io.mem.req := cache_req
-  cache_req.valid := (state_reg === s_traverse1) || (state_reg === s_traverse2) 
+  io.mem.req.valid := (state_reg === s_traverse1) || (state_reg === s_traverse2) 
   // cache_req.ready := state_reg === 
 
   /* CRC module path statements */
@@ -134,8 +132,8 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
       }
       next_state := Mux(io.requestor.req.valid, s_hashing, s_ready)
       /* Flush the cached_line_TX */
-      cached_line_T1 := 0.U
-      cached_line_T2 := 0.U
+      // cached_line_T1 := 0.U
+      // cached_line_T2 := 0.U
     }
     /* Parallel Computation of hash values */
     is(s_hashing){
@@ -146,13 +144,13 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
       next_state := Mux(traverse_count === 7.U, s_traverse2, s_traverse1)
       /* Logic for on loading cache response to the cached_line_T{1,2} */
       when (cache_valid) {
-        cached_line_T1.ptes(traverse_count) := cache_resp.data
+        // cached_line_T1.ptes(traverse_count) := cache_resp.data
       }
     }
     is (s_traverse2) {
       next_state := Mux(traverse_count === 7.U, s_done, s_traverse2)
       when (cache_valid) {
-        cached_line_T2.ptes(traverse_count) := cache_resp.data
+        // cached_line_T2.ptes(traverse_count) := cache_resp.data
       }
     }
     /* END: sequentially request the whole cacheline */

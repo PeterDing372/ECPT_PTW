@@ -75,37 +75,9 @@ lazy val ECPT = (project in file("."))
   .dependsOn(rocketchip)
 /* Switchable */
 
-// lazy val cde = (project in file("rocket-chip/cde"))
-//   .settings(commonSettings)
-//   .settings(
-//     Compile / scalaSource := baseDirectory.value / "cde/src/chipsalliance/rocketchip"
-//   )
 
-// lazy val hardfloat = (project in file("rocket-chip/hardfloat"))
-//   .settings(commonSettings, chiselSettings)
 
-// lazy val rocketMacros = (project in file("rocket-chip/macros"))
-//   .settings(commonSettings)
 
-// lazy val rocketchip = (Project("rocket-chip", file("rocket-chip/src")))
-//   .settings(commonSettings, chiselSettings)
-//   .settings(
-//     Compile / scalaSource       := baseDirectory.value / "main" / "scala",
-//     Compile / resourceDirectory := baseDirectory.value / "main" / "resources"
-//   )
-//   .dependsOn(cde)
-//   .dependsOn(hardfloat)
-//   .dependsOn(rocketMacros)
-
-// lazy val boom = (Project("riscv-boom", file("riscv-boom/src")))
-//   .settings(commonSettings, chiselSettings)
-//   .settings(
-//     Compile / scalaSource       := baseDirectory.value / "main" / "scala",
-//     Compile / resourceDirectory := baseDirectory.value / "main" / "resources"
-//   )
-// lazy val `api-config-chipsalliance` = (project in file("api-config-chipsalliance/build-rules/sbt"))
-//   .settings(commonSettings)
-//   .settings(publishArtifact := false)
 
 
 

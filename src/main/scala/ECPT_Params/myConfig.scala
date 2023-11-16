@@ -10,6 +10,7 @@ case object DEBUG_FLAG extends Field[Boolean](false)
 
 class myConfig(val debug: Boolean) extends Config(
     new DefaultConfig ++
+    // new MyTileKey ++
     new DebugFlagConfig(debug)
 )
 
