@@ -56,6 +56,11 @@ lazy val chiselSettings = Seq(
 /* Switchable */
 
 lazy val rocketchip = (project in file("rocket-chip-dev"))
+lazy val rocketLibDeps = (rocketchip / Keys.libraryDependencies)
+lazy val boom = (project in file("riscv-boom"))
+  .dependsOn(rocketchip)
+  .settings(libraryDependencies ++= rocketLibDeps.value)
+  .settings(commonSettings)
 
 lazy val ECPT = (project in file("."))
   .settings(commonSettings, chiselSettings)

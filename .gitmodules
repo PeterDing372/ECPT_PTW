@@ -1,6 +1,6 @@
 [submodule "rocket-chip-dev"]
 	path = rocket-chip-dev
 	url = git@github.com:PeterDing372/rocket-chip-dev.git
-[submodule "riscv-boom"]
-	path = riscv-boom
-	url = git@github.com:riscv-boom/riscv-boom.git
+[submodule "riscv-boom-dev"]
+	path = riscv-boom-dev
+	url = git@github.com:PeterDing372/riscv-boom-dev.git
