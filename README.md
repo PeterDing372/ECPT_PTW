@@ -1,4 +1,4 @@
-Chisel Project Template
+MMU hardware test suite for Elastic Cuckoo Page Table 
 =======================
 
 You've done the [Chisel Bootcamp](https://github.com/freechipsproject/chisel-bootcamp), and now you
