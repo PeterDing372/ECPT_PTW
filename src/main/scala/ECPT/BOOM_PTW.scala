@@ -14,7 +14,6 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.rocket._
-import ECPT.Params._
 
 import scala.collection.mutable.ListBuffer
 
@@ -106,7 +105,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val resp_fragmented_superpage = Reg(Bool())
 
   /** tlb request */
-  val r_req = Reg(new MyPTWReq)
+  val r_req = Reg(new PTWReq)
   /** current selected way in arbitor */
   val r_req_dest = Reg(Bits())
   // to respond to L1TLB : l2_hit

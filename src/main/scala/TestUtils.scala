@@ -1,4 +1,5 @@
-package ECPT_Params
+
+package ECPT_Test
 
 
 //******************************************************************************
@@ -18,6 +19,8 @@ import freechips.rocketchip.tile._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.subsystem._
+// import freechips.rocketchip.subsystem.{TilesLocated, InSubsystem, RocketTileAttachParams}
+
 
 // import boom.system._
 
@@ -67,11 +70,12 @@ object RocketTestUtils {
     }
 
     // get the tile parameters
-    val rocketTileParams = origParams(RocketTilesKey) // this is a seq
-
+    val rocketTileParams = origParams(TilesLocated(InSubsystem)).collect { case n: RocketTileAttachParams => n }.map(_.tileParams)
+    // rocketTileParams.
     // augment the parameters
-    val outParams = augment(rocketTileParams(0))(origParams)
+    val outParams = augment(rocketTileParams.head)(origParams)
 
     outParams
   }
 }
+

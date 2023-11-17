@@ -5,11 +5,10 @@ import chiseltest._
 import org.scalatest.freespec.AnyFreeSpec
 import freechips.rocketchip.system.DefaultConfig
 import freechips.rocketchip.system._
-import ECPT.Params._
 import freechips.rocketchip.tile.TileKey
 import freechips.rocketchip.tile.RocketTileParams
 import chipsalliance.rocketchip.config._
-import ECPT_Params.RocketTestUtils
+import ECPT_Test.RocketTestUtils
 
 
 class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
@@ -23,12 +22,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
     implicit val para: Parameters = boomParams
         
     // implicit val para = (new myConfig(false).toInstance.alterPartial{case TileKey => MyTileParams})
-        
 
-    def writePTWReq(PTW_Obj: MyPTWReq, addr: Int, need_gpa: Bool = false.B, vstage1: Bool = false.B, stage2: Bool = false.B) = {
-        println(s"writePTWReq: addr: $addr\n")
-        PTW_Obj.addr.poke("habcd".U(27.W))
-    }
 
     "BoomECPTSpec should compile" in {
         test(new BOOM_PTW(1)(para) ) { c =>
