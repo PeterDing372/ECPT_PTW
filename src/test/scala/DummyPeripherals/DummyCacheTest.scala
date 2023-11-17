@@ -15,7 +15,7 @@ class DummyCacheSpec extends AnyFreeSpec with ChiselScalatestTester{
 
 
     "DummyCache should Store WDATA" in {
-        test(new DummmyCache()(para) ) { c =>
+        test(new DummyCache()(para) ) { c =>
             println("SIMULATION: testing DummyCache")
             val reader = c.io.ptw
             val writer = c.io.cpu

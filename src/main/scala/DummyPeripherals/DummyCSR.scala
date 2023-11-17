@@ -9,13 +9,29 @@ import chipsalliance.rocketchip.config._
 import ECPT.Params._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tile._
+import ECPT.PTW._
 
 class DummyCSR (implicit p : Parameters) extends CoreModule()(p) {
   val io = IO(new Bundle {
     val dpath =  Flipped(new DatapathPTWIO)
-  })
+    // val ptbr =  Output(new PTBR)
+    val in = Input(Bool())
 
-  
+  })
+  io.dpath.ptbr := DontCare
+  io.dpath.hgatp := DontCare
+  io.dpath.vsatp := DontCare
+  io.dpath.status := DontCare
+  io.dpath.hstatus := DontCare
+  io.dpath.pmp := DontCare
+  // io.dpath.customCSRs := 0.U
+  // io.ptbr := PTBR_Init(p)
+  // io.ptbr := DontCare
+  // val ptbr = new PTBR
+  // ptbr := DontCare
+
+
+
 }
 // class DatapathPTWIO(implicit p: Parameters) extends CoreBundle()(p)
 //     with HasCoreParameters {

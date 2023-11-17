@@ -17,7 +17,7 @@ import ECPT.Params._
 
 
 /* Dummmy Cache module for response */
-class DummmyCache (implicit p :  Parameters) extends MyL1HellaCacheModule()(p) {
+class DummyCache (implicit p :  Parameters) extends MyL1HellaCacheModule()(p) {
   val io = IO(new Bundle {
     val ptw = Flipped(new MyHellaCacheIO) // input
     val cpu = Flipped(Decoupled(new MyCacheDataReq))
