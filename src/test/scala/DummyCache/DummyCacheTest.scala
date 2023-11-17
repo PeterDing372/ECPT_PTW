@@ -1,4 +1,4 @@
-package ECPT.DummyCache
+package ECPT.PTW.DummmyPeriphrals
 
 import chisel3._
 import chiseltest._
