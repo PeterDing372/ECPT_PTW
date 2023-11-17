@@ -9,7 +9,7 @@ import ECPT.Params._
 import freechips.rocketchip.tile.TileKey
 import freechips.rocketchip.tile.RocketTileParams
 import chipsalliance.rocketchip.config._
-import ECPT_Params.RocketTestUtils
+import ECPT_Test._
 
 
 class ECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
