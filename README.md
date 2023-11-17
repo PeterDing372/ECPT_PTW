@@ -1,10 +1,6 @@
 MMU hardware test suite for Elastic Cuckoo Page Table 
 =======================
 
-You've done the [Chisel Bootcamp](https://github.com/freechipsproject/chisel-bootcamp), and now you
-are ready to start your own Chisel project.  The following procedure should get you started
-with a clean running [Chisel3](https://www.chisel-lang.org/) project.
-
 ## Make your own Chisel3 project
 
 ### Dependencies
