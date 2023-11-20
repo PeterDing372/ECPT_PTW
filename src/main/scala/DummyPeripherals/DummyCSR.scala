@@ -1,4 +1,4 @@
-package ECPT.PTW.DummmyPeriphrals
+package ECPT.DummmyPeriphrals
 
 import chisel3._
 import chisel3.util._
@@ -15,7 +15,6 @@ class DummyCSR (implicit p : Parameters) extends CoreModule()(p) {
   val io = IO(new Bundle {
     val dpath =  Flipped(new DatapathPTWIO)
     // val ptbr =  Output(new PTBR)
-    val in = Input(Bool())
 
   })
   io.dpath.ptbr := DontCare

@@ -9,6 +9,7 @@ import boom.lsu.BoomNonBlockingDCache
 import freechips.rocketchip.diplomacy._
 import ECPT.PTW._
 import ECPT.PTW.Debug._
+import ECPT.DummmyPeriphrals._
 
 
 class myTop (implicit p : Parameters) extends CoreModule()(p) {
@@ -16,13 +17,19 @@ class myTop (implicit p : Parameters) extends CoreModule()(p) {
         val debug = new BOOM_PTW_DebugIO
     })
     val ptw  = Module(new BOOM_PTW(1)(p))
-    val hellaCachePorts  = ListBuffer[HellaCacheIO]()
-    hellaCachePorts += ptw.io.mem
-    val hellaCacheArb = Module(new HellaCacheArbiter(hellaCachePorts.length)(p))
-    hellaCacheArb.io.requestor <> hellaCachePorts.toSeq
-    // hellaCacheArb.io.mem <>
+    ptw.io.requestor := DontCare
+    ptw.io.mem := DontCare
+    // ptw.io.dpath := DontCare
+    val dummyCSR = Module(new DummyCSR()(p))
+    ptw.io.dpath <> dummyCSR.io.dpath
 
-    lazy val dcache: BoomNonBlockingDCache = LazyModule(new BoomNonBlockingDCache(staticIdForMetadataUseOnly))
+    // val hellaCachePorts  = ListBuffer[HellaCacheIO]()
+    // hellaCachePorts += ptw.io.mem
+    // val hellaCacheArb = Module(new HellaCacheArbiter(hellaCachePorts.length)(p))
+    // hellaCacheArb.io.requestor <> hellaCachePorts.toSeq
+    // // hellaCacheArb.io.mem <>
+
+    // lazy val dcache: BoomNonBlockingDCache = LazyModule(new BoomNonBlockingDCache(staticIdForMetadataUseOnly))
     // val dcache = new BoomNonBlockingDCache(staticIdForMetadataUseOnly
 }
 

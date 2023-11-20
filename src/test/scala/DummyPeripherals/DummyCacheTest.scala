@@ -1,4 +1,4 @@
-package ECPT.PTW.DummmyPeriphrals
+package ECPT.DummmyPeriphrals
 
 import chisel3._
 import chiseltest._
@@ -6,7 +6,6 @@ import org.scalatest.freespec.AnyFreeSpec
 import freechips.rocketchip.system.DefaultConfig
 import freechips.rocketchip.system._
 import ECPT.Params._
-import os.write
 
 
 class DummyCacheSpec extends AnyFreeSpec with ChiselScalatestTester{
