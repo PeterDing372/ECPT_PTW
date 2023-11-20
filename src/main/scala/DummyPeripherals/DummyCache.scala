@@ -1,4 +1,4 @@
-package ECPT.PTW.DummmyPeriphrals
+package ECPT.DummmyPeriphrals
 
 import chisel3._
 import chisel3.util.{Arbiter, Cat, Decoupled, Enum, Mux1H, OHToUInt, PopCount, PriorityEncoder, PriorityEncoderOH, RegEnable, UIntToOH, Valid, is, isPow2, log2Ceil, switch}

@@ -15,8 +15,8 @@ lazy val commonSettings = Seq(
     Resolver.sonatypeRepo("releases"),
     Resolver.mavenLocal
   ),
-  // publishMavenStyle := true,
-  // publishArtifact in Test := false,
+  publishMavenStyle := true,
+  publishArtifact in Test := false,
   pomIncludeRepository := { x => false },
   pomExtra := <url>https://github.com/chipsalliance/rocket-chip</url>
   <licenses>
@@ -35,16 +35,16 @@ lazy val commonSettings = Seq(
       <url>https://github.com/chipsalliance/rocketchip.git</url>
       <connection>scm:git:github.com/chipsalliance/rocketchip.git</connection>
     </scm>,
-  // publishTo := {
-  //   val v = version.value
-  //   val nexus = "https://oss.sonatype.org/"
-  //   if (v.trim.endsWith("SNAPSHOT")) {
-  //     Some("snapshots" at nexus + "content/repositories/snapshots")
-  //   }
-  //   else {
-  //     Some("releases" at nexus + "service/local/staging/deploy/maven2")
-  //   }
-  // }
+  publishTo := {
+    val v = version.value
+    val nexus = "https://oss.sonatype.org/"
+    if (v.trim.endsWith("SNAPSHOT")) {
+      Some("snapshots" at nexus + "content/repositories/snapshots")
+    }
+    else {
+      Some("releases" at nexus + "service/local/staging/deploy/maven2")
+    }
+  }
 )
 
 lazy val chiselSettings = Seq(
@@ -58,9 +58,9 @@ lazy val chiselSettings = Seq(
 lazy val rocketchip = (project in file("rocket-chip-dev"))
 lazy val rocketLibDeps = (rocketchip / Keys.libraryDependencies)
 lazy val boom = (project in file("riscv-boom-dev"))
-  .dependsOn(rocketchip)
-  .settings(libraryDependencies ++= rocketLibDeps.value)
   .settings(commonSettings, chiselSettings)
+  .settings(libraryDependencies ++= rocketLibDeps.value)
+  .dependsOn(rocketchip)
 
 lazy val ECPT = (project in file("."))
   .settings(commonSettings, chiselSettings)
