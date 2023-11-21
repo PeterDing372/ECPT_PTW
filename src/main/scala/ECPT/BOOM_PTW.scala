@@ -68,7 +68,9 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     val dpath = new DatapathPTWIO
   })
 
-  val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil = Enum(8)
+  val base_state_num = 8
+  val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
+      = Enum(base_state_num)
   val state = RegInit(s_ready)
   val l2_refill_wire = Wire(Bool())
   /** Arbiter to arbite request from n TLB */

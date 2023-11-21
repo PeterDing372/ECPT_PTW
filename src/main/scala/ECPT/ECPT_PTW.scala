@@ -17,18 +17,9 @@ import freechips.rocketchip.util.property
 import scala.collection.mutable.ListBuffer
 import freechips.rocketchip.rocket._
 import ECPT.Params._
+import ECPT.PTW.Debug._
 
 
-/* 
- * This is ports for the ECPT_PTW for us to poke what is happening inside 
- */
-class debugPorts_PTW (implicit p : Parameters) extends MyCoreBundle()(p) {
-  val debug_state = Output(UInt(3.W))
-  val debug_counter = Output(UInt(log2Ceil(8).W))
-  val debug_counter_trigger = Output(Bool())
-  val req_addr = Output(UInt(vpnBits.W))
-  
-}
 
 /* 
  * ECPTE_CacheLine holds the whole cache_line in a register 

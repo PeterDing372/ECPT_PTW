@@ -21,7 +21,7 @@ class MyTopSpec extends AnyFreeSpec with ChiselScalatestTester{
     
 
 
-    val boomParams: Parameters = RocketTestUtils.getRocketParameters("DefaultConfig")
+    val boomParams: Parameters = BoomTestUtils.getParameters("BoomConfigForTest")
     implicit val para: Parameters = boomParams
         
 

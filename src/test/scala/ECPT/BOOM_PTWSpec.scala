@@ -19,7 +19,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
     
 
 
-    val boomParams: Parameters = RocketTestUtils.getRocketParameters("DefaultConfig")
+    val boomParams: Parameters = BoomTestUtils.getParameters("BoomConfigForTest")
     implicit val para: Parameters = boomParams
         
     // implicit val para = (new myConfig(false).toInstance.alterPartial{case TileKey => MyTileParams})
