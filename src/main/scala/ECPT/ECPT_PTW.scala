@@ -17,7 +17,7 @@ import freechips.rocketchip.util.property
 import scala.collection.mutable.ListBuffer
 import freechips.rocketchip.rocket._
 import ECPT.Params._
-import ECPT.PTW.Debug._
+import ECPT.Debug._
 
 
 

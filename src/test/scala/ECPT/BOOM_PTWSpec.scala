@@ -10,6 +10,8 @@ import freechips.rocketchip.tile.TileKey
 import freechips.rocketchip.tile.RocketTileParams
 import chipsalliance.rocketchip.config._
 import ECPT_Test._
+import freechips.rocketchip.rocket._
+import chisel3.util._
 
 
 class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
@@ -22,57 +24,52 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
     val boomParams: Parameters = BoomTestUtils.getParameters("BoomConfigForTest")
     implicit val para: Parameters = boomParams
         
-    // implicit val para = (new myConfig(false).toInstance.alterPartial{case TileKey => MyTileParams})
-        
 
-    def writePTWReq(PTW_Obj: MyPTWReq, addr: Int, need_gpa: Bool = false.B, vstage1: Bool = false.B, stage2: Bool = false.B) = {
-        println(s"writePTWReq: addr: $addr\n")
-        PTW_Obj.addr.poke("habcd".U(27.W))
+    def writePTWReq(reqObj: DecoupledIO[Valid[PTWReq]], addr: Int, 
+    need_gpa: Bool = false.B, vstage1: Bool = false.B, stage2: Bool = false.B) = {
+        println(s"[writePTWReq]: addr: $addr")
+        reqObj.valid.poke(true)
+        val localReq = reqObj.bits.bits // this is the PTWReq object
+        localReq.addr.poke(addr.U(27.W))
+        localReq.need_gpa.poke(need_gpa) // this is always false == no virtual machine support
+        localReq.vstage1.poke(vstage1) // false: then PTW only do 1 stage table walk
+        localReq.stage2.poke(stage2)
+
     }
 
     "BoomECPTSpec should compile" in {
         test(new BOOM_PTW(1)(para) ) { c =>
-            println("SIMULATION: testing Boom_PTW")
+            println("SIMULATION[DONE]: compiled succesfully")          
+        }
+    }
+
+    "BoomECPTSpec should get request" in {
+        test(new BOOM_PTW(1)(para) ) { c =>
+            println("SIMULATION [Start]: write request to Boom_PTW")
+            val debug = c.io.debug
             val requestor = c.io.requestor
+            val PTWReqMonitor = debug.r_req_input
             requestor(0).req.valid.poke(false)
+            c.clock.step()
+            println(s"PTWReqMonitor Info: addr: ${PTWReqMonitor.addr.peek()}")
+            c.clock.step()
+            writePTWReq(requestor(0).req, 1, stage2 = true.B)
+            c.clock.step()
+            // PTWReqMonitor.addr = debug.r_req_input.addr.peek()
+            // PTWReqMonitor.need_gpa = debug.r_req_input.need_gpa.peek()
+            // PTWReqMonitor.vstage1 = debug.r_req_input.vstage1.peek()
+            // PTWReqMonitor.stage2 = debug.r_req_input.stage2.peek()
+            println(s"PTWReqMonitor Info: addr: ${PTWReqMonitor.addr.peek()}")
             
         }
 
     }
 
-    // "ECPT_PTW should store fetched cache response" in {
-    //     test(new ECPT_PTW(1)(para) ) { c =>
-    //         println("SIMULATION: testing ECPT_PTW")
-    //         val TLBReq= c.io.requestor.req
-    //         val debugs = c.io.debug
-    //         val cacheIO = c.io.mem
-    //         TLBReq.valid.poke(0.B)     
-    //         cacheIO.resp.valid.poke(0.B)  
-    //         // advance the clock
-    //         c.clock.step(1)  
-    //         debugs.debug_state.expect(0.U)
-    //         cacheIO.resp.valid.poke(1.B) 
-    //         c.clock.step(1)   
-    //         /* Starts */
-    //         TLBReq.valid.poke(1.B) 
-    //         TLBReq.bits.bits.addr.poke(1.U) // poke 1 addr
-    //         /* s_hashing */
-    //         println(s"SIMULATION: Entering s_hashing")
-    //         c.clock.step(1) 
-    //         TLBReq.bits.bits.addr.poke(0.U) // clear input
-    //         TLBReq.valid.poke(0.B) 
-    //         debugs.debug_state.expect(1.U) // entering s_hashing
-    //         println("SIMULATION: Start hashing")
-    //         for(i <- 1 to 30){
-    //         println(s"SIMULATION: hashing $i-th iteration")
-    //         /* Expected 27 states before hashing is complete */
-    //         debugs.req_addr.expect("habcd".U)
-    //         c.clock.step(1) 
-    //         }
-
-    //         c.clock.step(5) 
-    //     }
-
+    // class PTWReq(implicit p: Parameters) extends CoreBundle()(p) {
+    //     val addr = UInt(vpnBits.W)
+    //     val need_gpa = Bool()
+    //     val vstage1 = Bool()
+    //     val stage2 = Bool()
     // }
     
 }
