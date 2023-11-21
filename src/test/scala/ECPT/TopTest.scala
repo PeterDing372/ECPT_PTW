@@ -1,4 +1,4 @@
-package ECPT.PTW.TOP
+package ECPT.TOP
 
 import chisel3._
 import chiseltest._

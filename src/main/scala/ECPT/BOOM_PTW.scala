@@ -15,7 +15,7 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.rocket._
 import ECPT.Params._
-
+import ECPT.Debug._
 import scala.collection.mutable.ListBuffer
 
 
@@ -66,6 +66,10 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       * contains CSRs info and performance statistics
       */
     val dpath = new DatapathPTWIO
+    /** debug io ports
+     * 
+    */
+    val debug = new BOOM_PTW_DebugIO
   })
 
   val base_state_num = 8
@@ -87,7 +91,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val gated_clock =
     if (!usingVM || !tileParams.dcache.get.clockGate) clock
     else ClockGate(clock, clock_en, "ptw_clock_gate")
-  withClock (gated_clock) { // entering gated-clock domain
+  withClock (gated_clock) { 
+  /* -------- entering gated-clock domain --------- */
 
   val invalidated = Reg(Bool())
   /** current PTE level
@@ -108,7 +113,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val resp_fragmented_superpage = Reg(Bool())
 
   /** tlb request */
-  val r_req = Reg(new MyPTWReq)
+  val r_req = Reg(new PTWReq)
   /** current selected way in arbitor */
   val r_req_dest = Reg(Bits())
   // to respond to L1TLB : l2_hit
@@ -252,8 +257,10 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   l2_refill_wire := l2_refill
   io.dpath.perf.l2miss := false.B
   io.dpath.perf.l2hit := false.B
-  // l2tlb
-  val (l2_hit, l2_error, l2_pte, l2_tlb_ram) = if (coreParams.nL2TLBEntries == 0) (false.B, false.B, WireDefault(0.U.asTypeOf(new PTE)), None) else {
+  /* --------------- l2tlb START --------------------- */
+  val (l2_hit, l2_error, l2_pte, l2_tlb_ram) = if (coreParams.nL2TLBEntries == 0) 
+    (false.B, false.B, WireDefault(0.U.asTypeOf(new PTE)), None) 
+    else {
     val code = new ParityCode
     require(isPow2(coreParams.nL2TLBEntries))
     require(isPow2(coreParams.nL2TLBWays))
@@ -269,6 +276,11 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       desc = "L2 TLB",
       size = nL2TLBSets,
       data = Vec(coreParams.nL2TLBWays, UInt(code.width(new L2TLBEntry(nL2TLBSets).getWidth).W))
+      /**
+       * The data is: code.width adds one bit to the original width
+       * And the +1 bit is added to the base L2TLBEntry bit size
+      
+       */
     )
 
     val g = Reg(Vec(coreParams.nL2TLBWays, UInt(nL2TLBSets.W)))
@@ -359,6 +371,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
 
     (s2_hit, s2_error, s2_pte, Some(ram))
   }
+  /* --------------- l2tlb END --------------------- */
 
   // if SFENCE occurs during walk, don't refill PTE cache or L2 TLB until next walk
   invalidated := io.dpath.sfence.valid || (invalidated && state =/= s_ready)
@@ -600,7 +613,14 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   ccover(io.mem.s2_nack, "NACK", "D$ nacked page-table access")
   ccover(state === s_wait2 && io.mem.s2_xcpt.ae.ld, "AE", "access exception while walking page table")
 
-  } // leaving gated-clock domain
+  /* Connection for all debug io */
+  io.debug.r_req_input := io.requestor(0).req.bits.bits
+  io.debug.r_req_arb := r_req
+  io.debug.ptwState := state
+  io.debug.other_logic := DontCare
+
+  } 
+  /* ------------ leaving gated-clock domain ------------*/ 
 
   private def ccover(cond: Bool, label: String, desc: String)(implicit sourceInfo: SourceInfo) =
     if (usingVM) property.cover(cond, s"PTW_$label", "MemorySystem;;" + desc)
@@ -620,6 +640,9 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     pte.ppn := Cat(hgatp.ppn >> maxHypervisorExtraAddrBits, lsbs)
     pte
   }
+
+  
+
 }
 
 // /** Mix-ins for constructing tiles that might have a PTW */

@@ -1,4 +1,4 @@
-package ECPT.PTW.TOP
+package ECPT.TOP
 
 import chisel3._
 import freechips.rocketchip.tile._ 
@@ -8,7 +8,7 @@ import scala.collection.mutable.ListBuffer
 import boom.lsu.BoomNonBlockingDCache
 import freechips.rocketchip.diplomacy._
 import ECPT.PTW._
-import ECPT.PTW.Debug._
+import ECPT.Debug._
 import ECPT.DummmyPeriphrals._
 
 
@@ -18,16 +18,16 @@ class myTop (implicit p : Parameters) extends CoreModule()(p) {
     })
     val ptw  = Module(new BOOM_PTW(1)(p))
     // ptw.io.requestor := DontCare
-    // ptw.io.mem := DontCare
+    ptw.io.mem := DontCare
     // ptw.io.dpath := DontCare
     val dummyCSR = Module(new DummyCSR()(p))
     val dummyTLB = Module(new DummyTLB()(p))
     val staticMetaId = 0
-    val dcache = Module(LazyModule(new BoomNonBlockingDCache(staticMetaId)).module)
+    // val dcache = Module(LazyModule(new BoomNonBlockingDCache(staticMetaId)).module)
     val ptwPorts = ListBuffer(dummyTLB.io.ptw)
     ptw.io.dpath <> dummyCSR.io.dpath
     ptw.io.requestor <> ptwPorts.toSeq
-    dcache.io.lsu <> ptw.io.mem
+    // dcache.io.lsu <> ptw.io.mem
 
     // val hellaCachePorts  = ListBuffer[HellaCacheIO]()
     // hellaCachePorts += ptw.io.mem
