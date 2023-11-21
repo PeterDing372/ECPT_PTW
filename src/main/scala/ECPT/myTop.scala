@@ -17,20 +17,26 @@ class myTop (implicit p : Parameters) extends CoreModule()(p) {
         val debug = new BOOM_PTW_DebugIO
     })
     val ptw  = Module(new BOOM_PTW(1)(p))
-    ptw.io.requestor := DontCare
-    ptw.io.mem := DontCare
+    // ptw.io.requestor := DontCare
+    // ptw.io.mem := DontCare
     // ptw.io.dpath := DontCare
     val dummyCSR = Module(new DummyCSR()(p))
+    val dummyTLB = Module(new DummyTLB()(p))
+    val staticMetaId = 0
+    val dcache = Module(LazyModule(new BoomNonBlockingDCache(staticMetaId)).module)
+    val ptwPorts = ListBuffer(dummyTLB.io.ptw)
     ptw.io.dpath <> dummyCSR.io.dpath
+    ptw.io.requestor <> ptwPorts.toSeq
+    dcache.io.lsu <> ptw.io.mem
 
     // val hellaCachePorts  = ListBuffer[HellaCacheIO]()
     // hellaCachePorts += ptw.io.mem
     // val hellaCacheArb = Module(new HellaCacheArbiter(hellaCachePorts.length)(p))
     // hellaCacheArb.io.requestor <> hellaCachePorts.toSeq
     // // hellaCacheArb.io.mem <>
+    
+    
 
-    // lazy val dcache: BoomNonBlockingDCache = LazyModule(new BoomNonBlockingDCache(staticIdForMetadataUseOnly))
-    // val dcache = new BoomNonBlockingDCache(staticIdForMetadataUseOnly
 }
 
 

@@ -12,7 +12,7 @@ import ECPT_Test._
 
 
 class DummyCSRSpec extends AnyFreeSpec with ChiselScalatestTester{
-    val boomParams: Parameters = RocketTestUtils.getRocketParameters("DefaultConfig")
+    val boomParams: Parameters = RocketTestUtils.getParameters("DefaultConfig")
     implicit val para: Parameters = boomParams
 
 
