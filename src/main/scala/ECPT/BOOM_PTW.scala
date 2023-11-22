@@ -83,6 +83,12 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   arb.io.in <> io.requestor.map(_.req)
   // receive req only when s_ready and not in refill
   arb.io.out.ready := (state === s_ready) && !l2_refill_wire
+  printf("[BOOM PTW]: input valid: %d output valid: %d\n", 
+          io.requestor(0).req.valid,  arb.io.out.valid)
+  printf("[BOOM PTW]: output bits valid: %d output fire: %d\n", 
+          arb.io.out.bits.valid,  arb.io.out.fire())
+          
+
 
   val resp_valid = RegNext(VecInit(Seq.fill(io.requestor.size)(false.B)))
 
@@ -613,7 +619,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   ccover(io.mem.s2_nack, "NACK", "D$ nacked page-table access")
   ccover(state === s_wait2 && io.mem.s2_xcpt.ae.ld, "AE", "access exception while walking page table")
 
-  /* Connection for all debug io */
+  /* -------- Connection for all debug io -------- */
   io.debug.r_req_input := io.requestor(0).req.bits.bits
   io.debug.r_req_arb := r_req
   io.debug.ptwState := state
