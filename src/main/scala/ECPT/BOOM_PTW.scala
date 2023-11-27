@@ -82,11 +82,19 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   // use TLB req as arbitor's input
   arb.io.in <> io.requestor.map(_.req)
   // receive req only when s_ready and not in refill
+  /* Operation stage print */
   arb.io.out.ready := (state === s_ready) && !l2_refill_wire
   printf("[BOOM PTW]: input valid: %d output valid: %d\n", 
           io.requestor(0).req.valid,  arb.io.out.valid)
   printf("[BOOM PTW]: output bits valid: %d output fire: %d\n", 
           arb.io.out.bits.valid,  arb.io.out.fire())
+  /* Instantiate stage print */
+  println(s"[Instantiation Start]")
+  println(s"pgLevels: ${pgLevels} minPgLevels: ${minPgLevels}")
+  println(s"hypervisorExtraAddrBits: ${hypervisorExtraAddrBits}")
+  println(s"[Instantiation End]")
+  assert(!usingHypervisor && usingVM) // assert this is a single stage
+
           
 
 
@@ -145,7 +153,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val mem_resp_valid = RegNext(io.mem.resp.valid)
   val mem_resp_data = RegNext(io.mem.resp.bits.data)
   io.mem.uncached_resp.map { resp =>
-    assert(!(resp.valid && io.mem.resp.valid))
+    assert(!(resp.valid && io.mem.resp.valid)) // at most one can be valid simultaneously 
     resp.ready := true.B
     when (resp.valid) {
       mem_resp_valid := true.B
@@ -165,21 +173,30 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     (res, Mux(do_both_stages && !stage2, (tmp.ppn >> vpnBits) =/= 0.U, (tmp.ppn >> ppnBits) =/= 0.U))
   }
   // find non-leaf PTE, need traverse
-  val traverse = pte.table() && !invalid_paddr && count < (pgLevels-1).U
-  /** address send to mem for enquerry */
-  val pte_addr = if (!usingVM) 0.U else {
-    val vpn_idxs = (0 until pgLevels).map { i =>
-      val width = pgLevelBits + (if (i <= pgLevels - minPgLevels) hypervisorExtraAddrBits else 0)
-      (vpn >> (pgLevels - i - 1) * pgLevelBits)(width - 1, 0)
-    }
-    val mask     = Mux(stage2 && count === r_hgatp_initial_count, ((1 << (hypervisorExtraAddrBits + pgLevelBits)) - 1).U, ((1 << pgLevelBits) - 1).U)
-    val vpn_idx  = vpn_idxs(count) & mask
-    val raw_pte_addr = ((r_pte.ppn << pgLevelBits) | vpn_idx) << log2Ceil(xLen / 8)
-    val size = if (usingHypervisor) vaddrBits else paddrBits
-    //use r_pte.ppn as page table base address
-    //use vpn slice as offset
-    raw_pte_addr.apply(size.min(raw_pte_addr.getWidth) - 1, 0)
-  }
+  // val traverse = pte.table() && !invalid_paddr && count < (pgLevels-1).U
+  // /** address send to mem for enquerry */
+  // val pte_addr = if (!usingVM) 0.U else {
+  //   val vpn_idxs = (0 until pgLevels).map { i => // 0, 1, 2 
+  //     val width = pgLevelBits + (if (i <= pgLevels - minPgLevels) hypervisorExtraAddrBits else 0)
+  //     // width = 9 + 0
+  //     (vpn >> (pgLevels - i - 1) * pgLevelBits)(width - 1, 0)
+  //   }
+  //   val mask     = Mux(stage2 && count === r_hgatp_initial_count, 
+  //                   ((1 << (hypervisorExtraAddrBits + pgLevelBits)) - 1).U, ((1 << pgLevelBits) - 1).U)
+  //   // mask cover all bits in current vpn mask, e.g 0x1FF covers LSB 9 bits
+  //   val vpn_idx  = vpn_idxs(count) & mask
+  //   val raw_pte_addr = ((r_pte.ppn << pgLevelBits) | vpn_idx) << log2Ceil(xLen / 8)
+  //   val size = if (usingHypervisor) vaddrBits else paddrBits // paddrBits: 32
+  //   //use r_pte.ppn as page table base address
+  //   //use vpn slice as offset
+  //   raw_pte_addr.apply(size.min(raw_pte_addr.getWidth) - 1, 0)
+  // }
+
+  val traverse = false.B
+  val pte_addr = 0.U
+  // TODO: replace logic for pte_addr along with new states
+
+
   /** pte_cache input addr */
   val pte_cache_addr = if (!usingHypervisor) pte_addr else {
     val vpn_idxs = (0 until pgLevels-1).map { i =>
@@ -526,7 +543,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     makePTE(stage1_ppn & superpage_mask, aux_pte)
   }
 
-  r_pte := OptimizationBarrier(
+  r_pte := OptimizationBarrier( // result pte, TODO: replace condition for final hit to ECPT
     // l2tlb hit->find a leaf PTE(l2_pte), respond to L1TLB
     Mux(l2_hit && !l2_error, l2_pte,
     // pte cache hit->find a non-leaf PTE(pte_cache),continue to request mem
@@ -550,7 +567,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   when (mem_resp_valid) {
     assert(state === s_wait3)
     next_state := s_req
-    when (traverse) {
+    when (traverse) { // add radix traverse, TODO: Replace with ECPT
       when (do_both_stages && !stage2) { do_switch := true.B }
       count := count + 1.U
     }.otherwise {
@@ -595,7 +612,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     next_state := s_req
   }
 
-  when (do_switch) {
+  when (do_switch) { // do_switch: switching from supervisor to hypervisor, default to false for no Virtual Machine
     aux_count := Mux(traverse, count + 1.U, count)
     count := r_hgatp_initial_count
     aux_pte := Mux(traverse, pte, {
@@ -607,7 +624,11 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   }
 
   for (i <- 0 until pgLevels) {
-    val leaf = mem_resp_valid && !traverse && count === i.U
+    // val leaf = mem_resp_valid && !traverse && count === i.U 
+    val leaf = true.B
+    // this leaf signal controls condition for verification
+    // TODO: check if any of these statement can be resused
+    // currently hard-wire leaf to true
     ccover(leaf && pte.v && !invalid_paddr && pte.reserved_for_future === 0.U, s"L$i", s"successful page-table access, level $i")
     ccover(leaf && pte.v && invalid_paddr, s"L${i}_BAD_PPN_MSB", s"PPN too large, level $i")
     ccover(leaf && pte.v && pte.reserved_for_future =/= 0.U, s"L${i}_BAD_RSV_MSB", s"reserved MSBs set, level $i")
@@ -623,7 +644,9 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   io.debug.r_req_input := io.requestor(0).req.bits.bits
   io.debug.r_req_arb := r_req
   io.debug.ptwState := state
-  io.debug.other_logic := DontCare
+  io.debug.other_logic.vpn := vpn
+  io.debug.other_logic.do_both_stages := do_both_stages
+  io.debug.other_logic.pte_addr := pte_addr
 
   } 
   /* ------------ leaving gated-clock domain ------------*/ 
