@@ -27,10 +27,10 @@ import ECPT.Debug._
  */
 class ECPTE_CacheLine (implicit p : Parameters) extends MyCoreBundle()(p) {
   /* Contains a total of 8 PTE */
-  val ptes = Vec(8, new PTE)
+  val ptes = Vec(cacheBlockBytes/8, new PTE)
 
   def fetchTag() : UInt = {
-    ptes.map(_.reserved_for_future(2,0)).reduce((a,b) => Cat(a,b))
+    ptes.map(_.reserved_for_future(2,0)).reduce((b,a) => Cat(a,b))
   }
 
 }
