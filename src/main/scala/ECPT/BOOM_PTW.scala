@@ -73,8 +73,10 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   })
 
   val base_state_num = 8
-  val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
-      = Enum(base_state_num)
+  // val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
+  //     = Enum(base_state_num)
+  val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_req :: s_wait1 :: Nil 
+      = Enum(6)
   val state = RegInit(s_ready)
   val l2_refill_wire = Wire(Bool())
   /** Arbiter to arbite request from n TLB */
@@ -87,16 +89,26 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   println(s"[Instantiation Start]")
   println(s"pgLevels: ${pgLevels} minPgLevels: ${minPgLevels}")
   println(s"hypervisorExtraAddrBits: ${hypervisorExtraAddrBits}")
-  // println(s"untagBits: ${untagBits}")
+  println(s"lgCacheBlockBytes: ${lgCacheBlockBytes}")
   println(s"[Instantiation End]")
   assert(!usingHypervisor && usingVM) // assert this is a single stage
 
-          
+  /* Temporary constant declaration*/
+  // TODO: move into configs  
+  val init_pt_bits = 9
+  val H1_poly : Long = 0x119
+  val H2_poly : Long = 0x17d
+
+  val base_4KB = VecInit(0x0000.U, 0x1000.U)
+  val base_2MB = VecInit(0x2000.U, 0x3000.U)
+  val base_1GB = VecInit(0x4000.U, 0x5000.U)
+  
 
 
   val resp_valid = RegNext(VecInit(Seq.fill(io.requestor.size)(false.B)))
 
-  val clock_en = state =/= s_ready || l2_refill_wire || arb.io.out.valid || io.dpath.sfence.valid || io.dpath.customCSRs.disableDCacheClockGate
+  val clock_en = state =/= s_ready || l2_refill_wire || arb.io.out.valid || 
+                  io.dpath.sfence.valid || io.dpath.customCSRs.disableDCacheClockGate
   io.dpath.clock_enabled := usingVM.B && clock_en
   /* Operation stage print */
   arb.io.out.ready := (state === s_ready) && !l2_refill_wire
@@ -110,6 +122,18 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     else ClockGate(clock, clock_en, "ptw_clock_gate")
   withClock (gated_clock) { 
   /* -------- entering gated-clock domain --------- */
+  val vpn_h1 = Reg(UInt(init_pt_bits.W))
+  val vpn_h2 = Reg(UInt(init_pt_bits.W))
+  val cached_line_T1 = Reg(new ECPTE_CacheLine)
+  val cached_line_T2 = Reg(new ECPTE_CacheLine)
+  val traverse_count = Wire(UInt(lgCacheBlockBytes.W))
+
+  /* Internal hardware modules */
+  val counter = Module(new CounterWithTrigger(8))
+  val H1_CRC = Module(new CRC_hash_FSM(init_pt_bits, H1_poly, vpnBits)) // n: Int, g: Long, data_len: Int
+  val H2_CRC = Module(new CRC_hash_FSM(init_pt_bits, H2_poly, vpnBits))
+  
+  counter.io.trigger := io.mem.resp.valid && (state === s_traverse1 || state === s_traverse2)
 
   val invalidated = Reg(Bool())
   /** current PTE level
@@ -408,7 +432,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   // if SFENCE occurs during walk, don't refill PTE cache or L2 TLB until next walk
   invalidated := io.dpath.sfence.valid || (invalidated && state =/= s_ready)
   // mem request
-  io.mem.req.valid := state === s_req || state === s_dummy1
+  io.mem.req.valid := state === s_req  // || state === s_dummy1
   io.mem.req.bits.phys := true.B
   io.mem.req.bits.cmd  := M_XRD // read operation
   io.mem.req.bits.size := log2Ceil(xLen/8).U
@@ -525,30 +549,31 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       // }
 
     }
-    is (s_wait1) {
-      // This Mux is for the l2_error case; the l2_hit && !l2_error case is overriden below
-      next_state := Mux(l2_hit, s_req, s_wait2)
-    }
-    is (s_wait2) {
-      next_state := s_wait3
-      io.dpath.perf.pte_miss := count < (pgLevels-1).U
-      when (io.mem.s2_xcpt.ae.ld) {
-        resp_ae_ptw := true.B
-        next_state := s_ready
-        resp_valid(r_req_dest) := true.B
-      }
-    }
-    is (s_fragment_superpage) {
-      next_state := s_ready
-      resp_valid(r_req_dest) := true.B
-      when (!homogeneous) {
-        count := (pgLevels-1).U
-        resp_fragmented_superpage := true.B
-      }
-      when (do_both_stages) {
-        resp_fragmented_superpage := true.B
-      }
-    }
+    // TODO: add additional states here
+    // is (s_wait1) {
+    //   // This Mux is for the l2_error case; the l2_hit && !l2_error case is overriden below
+    //   next_state := Mux(l2_hit, s_req, s_wait2)
+    // }
+    // is (s_wait2) {
+    //   next_state := s_wait3
+    //   io.dpath.perf.pte_miss := count < (pgLevels-1).U
+    //   when (io.mem.s2_xcpt.ae.ld) {
+    //     resp_ae_ptw := true.B
+    //     next_state := s_ready
+    //     resp_valid(r_req_dest) := true.B
+    //   }
+    // }
+    // is (s_fragment_superpage) {
+    //   next_state := s_ready
+    //   resp_valid(r_req_dest) := true.B
+    //   when (!homogeneous) {
+    //     count := (pgLevels-1).U
+    //     resp_fragmented_superpage := true.B
+    //   }
+    //   when (do_both_stages) {
+    //     resp_fragmented_superpage := true.B
+    //   }
+    // }
   }
 
   val merged_pte = { // TODO: this is something that merge hgatp and vsatp?
@@ -593,7 +618,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     // when mem respond, store mem.resp.pte
     Mux(mem_resp_valid, pte, 
     // fragment_superpage
-    Mux(state === s_fragment_superpage && !homogeneous, makePTE(makeFragmentedSuperpagePPN(r_pte.ppn)(count), r_pte), 
+    Mux(false.B && !homogeneous, makePTE(makeFragmentedSuperpagePPN(r_pte.ppn)(count), r_pte), 
     // TODO: assumed homogeneous
     // when tlb request come->request mem, use root address in satp(or vsatp,hgatp) 
     // this is first stage of traverse
@@ -608,7 +633,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     count := (pgLevels-1).U
   }
   when (mem_resp_valid) {
-    assert(state === s_wait3)
+    // assert(state === s_wait3) // TODO: find something to replace this assert
     next_state := s_req
     when (traverse) { // add radix traverse, TODO: Replace with ECPT
       when (do_both_stages && !stage2) { do_switch := true.B }
@@ -634,12 +659,14 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
            do_both_stages && aux_count === (pgLevels-1).U && pte.isFullPerm())
         count := max_count
 
-        when (pageGranularityPMPs.B && !(count === (pgLevels-1).U && (!do_both_stages || aux_count === (pgLevels-1).U))) {
-          next_state := s_fragment_superpage
-        }.otherwise {
-          next_state := s_ready
-          resp_valid(r_req_dest) := true.B
-        }
+        // TODO: check what theses need to change
+        // when (pageGranularityPMPs.B && !(count === (pgLevels-1).U && (!do_both_stages || aux_count === (pgLevels-1).U))) {
+        //   next_state := s_fragment_superpage
+        // }.otherwise {
+        //   next_state := s_ready
+        //   resp_valid(r_req_dest) := true.B
+        // }
+        
 
         resp_ae_final := ae
         resp_pf := pf && !stage2
@@ -651,7 +678,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     }
   }
   when (io.mem.s2_nack) {
-    assert(state === s_wait2)
+    // assert(state === s_wait2) // TODO: find something to replace this assert 
     next_state := s_req
   }
 
@@ -681,7 +708,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   }
   ccover(mem_resp_valid && count === (pgLevels-1).U && pte.table(), s"TOO_DEEP", s"page table too deep")
   ccover(io.mem.s2_nack, "NACK", "D$ nacked page-table access")
-  ccover(state === s_wait2 && io.mem.s2_xcpt.ae.ld, "AE", "access exception while walking page table")
+  // ccover(state === s_wait2 && io.mem.s2_xcpt.ae.ld, "AE", "access exception while walking page table") // TODO: check this
 
   /* -------- Connection for all debug io -------- */
   io.debug.r_req_input := io.requestor(0).req.bits.bits
@@ -690,6 +717,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   io.debug.other_logic.vpn := vpn
   io.debug.other_logic.do_both_stages := do_both_stages
   io.debug.other_logic.pte_addr := pte_addr
+  io.debug.other_logic.arbOutValid := arb.io.out.valid
 
   } 
   /* ------------ leaving gated-clock domain ------------*/ 

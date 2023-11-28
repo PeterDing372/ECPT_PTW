@@ -30,4 +30,5 @@ class BOOM_PTW_logics (implicit p : Parameters) extends CoreBundle()(p) {
   val vpn = Output(UInt(vpnBits.W))
   val do_both_stages = Output(Bool())
   val pte_addr = (UInt())
+  val arbOutValid = Output(Bool())
 }

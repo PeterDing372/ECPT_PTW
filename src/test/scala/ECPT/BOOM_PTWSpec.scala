@@ -22,8 +22,10 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
     implicit val para: Parameters = boomParams
     var cycle = 0
     val base_state_num = 8
-    val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
-      = Enum(base_state_num)
+    // val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
+    //   = Enum(base_state_num)
+    val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_req :: s_wait1 :: Nil 
+      = Enum(6)
         
 
     def writePTWReq(reqObj: DecoupledIO[Valid[PTWReq]], addr: Int, 
@@ -151,12 +153,45 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             printMemIO(memIO)
             
 
-
-            /* TODO: Verify request stays on PTW reg or stays on IO */
-
-            
         }
-
     }
+    /* Note request does not stay on arb out if we remove the request */
+    
+    // "BoomECPTSpec arbiter should stay valid" in {
+    //     test(new BOOM_PTW(1)(para) ) { c =>
+    //         cycle = 0
+    //         println("SIMULATION [Start]: write request to Boom_PTW")
+    //         val vpnAddr = formRadixReqAddr(1, 1, 1)
+    //         println(s"SIMULATION [vpnAddr]: hex ${vpnAddr.toHexString} /  ${vpnAddr.toBinaryString}")
+    //         val debug = c.io.debug
+    //         val requestor = c.io.requestor
+    //         val memIO = c.io.mem
+    //         requestor(0).req.valid.poke(false)
+    //         printDebugInfo(debug)
+    //         printMemIO(memIO)
+    //         stepClock(c)
+    //         stepClock(c)
+    //         printDebugInfo(debug)
+    //         debug.ptwState.expect(s_ready)
+    //         stepClock(c)
+    //         printDebugInfo(debug)
+    //         writePTWReq(requestor(0).req, vpnAddr, stage2 = true.B)
+    //         stepClock(c)
+    //         debug.ptwState.expect(s_req)
+    //         debug.other_logic.arbOutValid.expect(true.B)
+    //         printDebugInfo(debug)
+    //         printMemIO(memIO)
+    //         stepClock(c)
+    //         requestor(0).req.valid.poke(false)
+    //         debug.other_logic.arbOutValid.expect(true.B)
+    //         // assume cache received request and set resp is ready
+    //         stepClock(c)
+    //         debug.other_logic.arbOutValid.expect(true.B)
+    //         debug.ptwState.expect(s_wait1)
+    //         stepClock(c)
+    //         printDebugInfo(debug)
+    //         printMemIO(memIO)
+    //     }
+    // }
     
 }
