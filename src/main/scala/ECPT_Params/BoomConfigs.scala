@@ -12,7 +12,7 @@ import ECPT.Params._
 class BoomConfigForTest extends Config(
   new boom.common.WithNSmallBooms(1) ++
   new BaseConfig ++
-  new DebugFlagConfig(true)
+  new DebugFlagConfig(false)
   )
 
 // class SmallBoomConfig extends Config(
