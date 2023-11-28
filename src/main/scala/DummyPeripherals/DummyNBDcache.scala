@@ -6,17 +6,21 @@ import freechips.rocketchip.rocket._
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.tilelink.ClientMetadata
 import freechips.rocketchip.tile.CoreModule
+import freechips.rocketchip.util.DescribedSRAM
 
 
 class DummyNBDcache(implicit p: Parameters) extends CoreModule with HasL1HellaCacheParameters {
   val io = IO(Flipped(new HellaCacheIO))
-
+  println(s"[DummyNBDcache Parameters] rowWords: ${rowWords} nWays: ${nWays} " +
+    s"nSets ${nSets}")
+  override def nWays: Int = 1
   // Data Array
-  val dataArray = Module(new DataArray)
+  val dataArray = Module(new MyDataArray)
   // val readArb = Module(new Arbiter(new L1DataReadReq, 4))
   // val writeArb = Module(new Arbiter(new L1DataWriteReq, 1))
-
   
+
+
 
   // Metadata Array
   def onReset = L1Metadata(0.U, ClientMetadata.onReset)
@@ -33,7 +37,7 @@ class DummyNBDcache(implicit p: Parameters) extends CoreModule with HasL1HellaCa
   metadataArray.io.read.bits.tag := io.req.bits.addr >> untagBits
 
   // Handling cache responses
-  val s1_resp = RegNext(io.req.fire)
+  val s1_resp = RegNext(io.req.valid)
   val s1_req = RegEnable(io.req.bits, io.req.fire)
 
   val readData = dataArray.io.resp
@@ -71,7 +75,7 @@ class DummyNBDcache(implicit p: Parameters) extends CoreModule with HasL1HellaCa
     val writeWay = 0.U // For simplicity, assume we always write to way 0
     val writeData = io.req.bits.data
     val writeAddr = io.req.bits.addr
-    val writeMask = io.req.bits.mask
+    val writeMask = ~0.U(rowWords.W)// io.req.bits.mask
 
     // Update Data Array
     dataArray.io.write.valid := true.B
@@ -109,5 +113,107 @@ class DummyNBDcache(implicit p: Parameters) extends CoreModule with HasL1HellaCa
   io.keep_clock_enabled := DontCare
   io.clock_enabled := DontCare
 }
+
+
+class MyDataArray(implicit p: Parameters) extends L1HellaCacheModule()(p) {
+
+  val io = IO(new Bundle {
+    val read = Flipped(Decoupled(new L1DataReadReq))
+    val write = Flipped(Decoupled(new L1DataWriteReq))
+    val resp = Output(Vec(nWays, Bits(encRowBits.W)))
+  })
+  override def nWays: Int = 1
+  println(s"[MyDataArray Parameters] rowWords: ${rowWords} nWays: ${nWays} " +
+    s"rowBits: ${rowBits} doNarrowRead: ${doNarrowRead}\n" +
+    s"refillCycles: ${refillCycles} cacheDataBytes: ${cacheDataBytes} " +
+    s"encRowBits: ${encRowBits}")
+
+
+
+  val waddr = io.write.bits.addr >> rowOffBits
+  val raddr = io.read.bits.addr >> rowOffBits
+
+  if (doNarrowRead) {
+    for (w <- 0 until nWays by rowWords) {
+      // get the current way enable
+      val wway_en = io.write.bits.way_en(w+rowWords-1,w)
+      val rway_en = io.read.bits.way_en(w+rowWords-1,w)
+
+      val resp = Wire(Vec(rowWords, Bits(encRowBits.W)))
+      val r_raddr = RegEnable(io.read.bits.addr, io.read.valid)
+      for (i <- 0 until resp.size) { // size = 1
+        val array  = DescribedSRAM(
+          name = s"array_${w}_${i}",
+          desc = "Non-blocking DCache Data Array",
+          size = nSets * refillCycles, 
+          // multiply refillCycles is just another calculation for cache line size
+          data = Vec(rowWords, Bits(encDataBits.W))
+        )
+        when (wway_en.orR && io.write.valid && io.write.bits.wmask(i)) {
+          val data = VecInit.fill(rowWords)(io.write.bits.data(encDataBits*(i+1)-1,encDataBits*i))
+          array.write(waddr, data, wway_en.asBools)
+        }
+        resp(i) := array.read(raddr, rway_en.orR && io.read.valid).asUInt
+      }
+      for (dw <- 0 until rowWords) {
+        val r = VecInit(resp.map(_(encDataBits*(dw+1)-1,encDataBits*dw)))
+        val resp_mux =
+          if (r.size == 1) r
+          else VecInit(r(r_raddr(rowOffBits-1,wordOffBits)), r.tail:_*)
+        io.resp(w+dw) := resp_mux.asUInt
+      }
+    }
+  } else {
+    for (w <- 0 until nWays) {
+      val array  = DescribedSRAM(
+        name = s"array_${w}",
+        desc = "Non-blocking DCache Data Array",
+        size = nSets * refillCycles,
+        data = Vec(rowWords, Bits(encDataBits.W))
+      )
+      when (io.write.bits.way_en(w) && io.write.valid) {
+        val data = VecInit.tabulate(rowWords)(i => io.write.bits.data(encDataBits*(i+1)-1,encDataBits*i))
+        array.write(waddr, data, io.write.bits.wmask.asBools)
+      }
+      io.resp(w) := array.read(raddr, io.read.bits.way_en(w) && io.read.valid).asUInt
+    }
+  }
+
+  io.read.ready := true.B
+  io.write.ready := true.B
+}
+
+
+
+class MyL1MetadataArray[T <: L1Metadata](onReset: () => T)(implicit p: Parameters) extends L1HellaCacheModule()(p) {
+  override def nWays: Int = 1
+  println(s"[MyL1MetadataArray Parameters] rowWords: ${rowWords} nWays: ${nWays}")
+  val rstVal = onReset()
+  val io = IO(new Bundle {
+    val read = Flipped(Decoupled(new L1MetaReadReq))
+    val write = Flipped(Decoupled(new L1MetaWriteReq))
+    val resp = Output(Vec(nWays, rstVal.cloneType))
+  })
+
+  val rst_cnt = RegInit(0.U(log2Up(nSets+1).W))
+  val rst = rst_cnt < nSets.U
+  val waddr = Mux(rst, rst_cnt, io.write.bits.idx)
+  val wdata = Mux(rst, rstVal, io.write.bits.data).asUInt
+  val wmask = Mux(rst || (nWays == 1).B, (-1).S, io.write.bits.way_en.asSInt).asBools
+  val rmask = Mux(rst || (nWays == 1).B, (-1).S, io.read.bits.way_en.asSInt).asBools
+  when (rst) { rst_cnt := rst_cnt+1.U }
+
+  val metabits = rstVal.getWidth
+  val tag_array = SyncReadMem(nSets, Vec(nWays, UInt(metabits.W)))
+  val wen = rst || io.write.valid
+  when (wen) {
+    tag_array.write(waddr, VecInit.fill(nWays)(wdata), wmask)
+  }
+  io.resp := tag_array.read(io.read.bits.idx, io.read.fire()).map(_.asTypeOf(chiselTypeOf(rstVal)))
+
+  io.read.ready := !wen // so really this could be a 6T RAM
+  io.write.ready := !rst
+}
+
 
 

@@ -10,6 +10,7 @@ import chipsalliance.rocketchip.config._
 import ECPT_Test.BoomTestUtils
 import DummyPeripherals.DummyNBDcache
 import freechips.rocketchip.rocket.constants.MemoryOpConstants
+import chisel3.util.UIntToOH
 
 class DummyNBDcacheSpec extends AnyFreeSpec with ChiselScalatestTester with MemoryOpConstants {
     
@@ -18,7 +19,7 @@ class DummyNBDcacheSpec extends AnyFreeSpec with ChiselScalatestTester with Memo
 
 
 
-  "correctly store and read data in the data array" in {
+  "DummyNBDcache should store and read data" in {
     test(new DummyNBDcache()) { c =>
       val writer = c.io.req
       val reader = c.io.resp
@@ -28,6 +29,8 @@ class DummyNBDcacheSpec extends AnyFreeSpec with ChiselScalatestTester with Memo
       writer.bits.addr.poke(0.U)
       writer.bits.cmd.poke(M_XWR) // Write command
       writer.bits.data.poke(42.U) // Arbitrary data
+      // writer.bits.mask.poke(~0.U(1.W)) // Arbitrary data
+      
       c.clock.step(1)
 
       // Stop writing
@@ -41,7 +44,25 @@ class DummyNBDcacheSpec extends AnyFreeSpec with ChiselScalatestTester with Memo
       c.clock.step(1)
 
       // Check read data
-      assert(reader.bits.data.peek().litValue == 42)
+      // assert(reader.bits.data.peek().litValue == 42)
+      reader.bits.data.expect(42.U)
+      c.clock.step(1)
+
+      // write a different value
+      writer.valid.poke(true.B)
+      writer.bits.addr.poke(0.U)
+      writer.bits.cmd.poke(M_XWR) // Write command
+      writer.bits.data.poke(41.U) // Arbitrary data
+      c.clock.step(1)
+      // Stop writing
+      writer.valid.poke(false.B)
+      c.clock.step(1)
+      // Example read from cache
+      writer.valid.poke(true.B)
+      writer.bits.addr.poke(0.U)
+      writer.bits.cmd.poke(M_XRD) // Read command
+      c.clock.step(1)
+      reader.bits.data.expect(41.U)
       c.clock.step(1)
     }
   }
