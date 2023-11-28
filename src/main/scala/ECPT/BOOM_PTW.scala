@@ -200,6 +200,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   // TODO: replace logic for pte_addr along with new states
 
 
+  /*
   /** pte_cache input addr */
   val pte_cache_addr = if (!usingHypervisor) pte_addr else {
     val vpn_idxs = (0 until pgLevels-1).map { i =>
@@ -213,6 +214,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     val raw_pte_cache_addr = Cat(r_pte.ppn, vpn_idx) << log2Ceil(xLen/8)
     raw_pte_cache_addr(vaddrBits.min(raw_pte_cache_addr.getWidth)-1, 0)
   }
+  */
+
   /** stage2_pte_cache input addr */
   val stage2_pte_cache_addr = if (!usingHypervisor) 0.U else {
     val vpn_idxs = (0 until pgLevels - 1).map { i =>
@@ -229,6 +232,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   /** PTECache caches non-leaf PTE
     * @param s2 true: 2-stage address translation
     */
+  /** --------------------------------------------
   def makePTECache(s2: Boolean): (Bool, UInt) = if (coreParams.nPTECacheEntries == 0) {
     (false.B, 0.U)
   } else {
@@ -268,10 +272,12 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
 
     (hit, Mux1H(hits, data))
   }
+  --------------------------------- */
+  
   // generate pte_cache
-  val (pte_cache_hit, pte_cache_data) = makePTECache(false)
+  // val (pte_cache_hit, pte_cache_data) = makePTECache(false)
   // generate pte_cache with 2-stage translation
-  val (stage2_pte_cache_hit, stage2_pte_cache_data) = makePTECache(true)
+  // val (stage2_pte_cache_hit, stage2_pte_cache_data) = (0.U, 0.U) // makePTECache(true)
   // pte_cache hit or 2-stage pte_cache hit
   val pte_hit = RegNext(false.B)
   io.dpath.perf.pte_miss := false.B
@@ -404,14 +410,14 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   // mem request
   io.mem.req.valid := state === s_req || state === s_dummy1
   io.mem.req.bits.phys := true.B
-  io.mem.req.bits.cmd  := M_XRD
+  io.mem.req.bits.cmd  := M_XRD // read operation
   io.mem.req.bits.size := log2Ceil(xLen/8).U
   io.mem.req.bits.signed := false.B
   io.mem.req.bits.addr := pte_addr
   io.mem.req.bits.idx.foreach(_ := pte_addr)
   io.mem.req.bits.dprv := PRV.S.U   // PTW accesses are S-mode by definition
   io.mem.req.bits.dv := do_both_stages && !stage2
-  io.mem.s1_kill := l2_hit || state =/= s_wait1
+  io.mem.s1_kill := l2_hit || state =/= s_wait1 // TODO: replace with with condition of hit in PWC
   io.mem.s2_kill := false.B
 
   val pageGranularityPMPs = pmpGranularity >= (1 << pgIdxBits)
@@ -429,7 +435,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
 //   val pmaHomogeneous = pmaPgLevelHomogeneous(count)
 //   val pmpHomogeneous = new PMPHomogeneityChecker(io.dpath.pmp).apply(r_pte.ppn << pgIdxBits, count)
 //   val homogeneous = pmaHomogeneous && pmpHomogeneous
-  val homogeneous = true.B
+  val homogeneous = true.B // indicates if memory region share the same attribute
   // response to tlb
   for (i <- 0 until io.requestor.size) {
     io.requestor(i).resp.valid := resp_valid(i)
@@ -500,20 +506,24 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
         gpa_pgoff := Mux(aux_count === (pgLevels-1).U, r_req.addr << (xLen/8).log2, stage2_pte_cache_addr)
       }
       // pte_cache hit
-      when (stage2_pte_cache_hit) {
-        aux_count := aux_count + 1.U
-        aux_pte.ppn := stage2_pte_cache_data
-        aux_ppn_hi.foreach { _ := 0.U }
-        aux_pte.reserved_for_future := 0.U
-        pte_hit := true.B
-      }.elsewhen (pte_cache_hit) {
-        count := count + 1.U
-        pte_hit := true.B
-      }.otherwise {
-        next_state := Mux(io.mem.req.ready, s_wait1, s_req)
-        // requires receiver to be ready then goes to s_wait1 stage
-        printf("[BOOM_PTW]: s_req execution directly falls in last case, going to next state\n")
-      }
+      next_state := Mux(io.mem.req.ready, s_wait1, s_req)
+      // requires receiver to be ready then goes to s_wait1 stage
+      printf("[BOOM_PTW]: s_req execution directly falls in last case, going to next state\n")
+      // when (stage2_pte_cache_hit) {
+      //   aux_count := aux_count + 1.U
+      //   aux_pte.ppn := stage2_pte_cache_data
+      //   aux_ppn_hi.foreach { _ := 0.U }
+      //   aux_pte.reserved_for_future := 0.U
+      //   pte_hit := true.B
+      // }.elsewhen (pte_cache_hit) {
+      //   count := count + 1.U
+      //   pte_hit := true.B
+      // }.otherwise {
+      //   next_state := Mux(io.mem.req.ready, s_wait1, s_req)
+      //   // requires receiver to be ready then goes to s_wait1 stage
+      //   printf("[BOOM_PTW]: s_req execution directly falls in last case, going to next state\n")
+      // }
+
     }
     is (s_wait1) {
       // This Mux is for the l2_error case; the l2_hit && !l2_error case is overriden below
@@ -558,20 +568,38 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     makePTE(stage1_ppn & superpage_mask, aux_pte)
   }
 
+  // r_pte := OptimizationBarrier( // result pte, TODO: replace condition for final hit to ECPT
+  //   // l2tlb hit->find a leaf PTE(l2_pte), respond to L1TLB
+  //   Mux(l2_hit && !l2_error, l2_pte,
+  //   // pte cache hit->find a non-leaf PTE(pte_cache),continue to request mem
+  //   Mux(state === s_req && !stage2_pte_cache_hit && pte_cache_hit, makePTE(pte_cache_data, l2_pte),
+  //   // 2-stage translation
+  //   Mux(do_switch, makeHypervisorRootPTE(r_hgatp, pte.ppn, r_pte),
+  //   // when mem respond, store mem.resp.pte
+  //   Mux(mem_resp_valid, Mux(!traverse && r_req.vstage1 && stage2, merged_pte, pte),
+  //   // fragment_superpage
+  //   Mux(state === s_fragment_superpage && !homogeneous, makePTE(makeFragmentedSuperpagePPN(r_pte.ppn)(count), r_pte),
+  //   // when tlb request come->request mem, use root address in satp(or vsatp,hgatp)
+  //   Mux(arb.io.out.fire(), Mux(arb.io.out.bits.bits.stage2, makeHypervisorRootPTE(io.dpath.hgatp, io.dpath.vsatp.ppn, r_pte), makePTE(satp.ppn, r_pte)),
+  //   r_pte)))))))
+
   r_pte := OptimizationBarrier( // result pte, TODO: replace condition for final hit to ECPT
     // l2tlb hit->find a leaf PTE(l2_pte), respond to L1TLB
     Mux(l2_hit && !l2_error, l2_pte,
     // pte cache hit->find a non-leaf PTE(pte_cache),continue to request mem
-    Mux(state === s_req && !stage2_pte_cache_hit && pte_cache_hit, makePTE(pte_cache_data, l2_pte),
+    Mux(false.B, makePTE(0.U, l2_pte), // TODO: (remove) placeholder to keep things comparable to original
     // 2-stage translation
-    Mux(do_switch, makeHypervisorRootPTE(r_hgatp, pte.ppn, r_pte),
+    Mux(do_switch, makeHypervisorRootPTE(r_hgatp, pte.ppn, r_pte), // TODO: (remove) do_switch: false
     // when mem respond, store mem.resp.pte
-    Mux(mem_resp_valid, Mux(!traverse && r_req.vstage1 && stage2, merged_pte, pte),
+    Mux(mem_resp_valid, pte, 
     // fragment_superpage
-    Mux(state === s_fragment_superpage && !homogeneous, makePTE(makeFragmentedSuperpagePPN(r_pte.ppn)(count), r_pte),
-    // when tlb request come->request mem, use root address in satp(or vsatp,hgatp)
+    Mux(state === s_fragment_superpage && !homogeneous, makePTE(makeFragmentedSuperpagePPN(r_pte.ppn)(count), r_pte), 
+    // TODO: assumed homogeneous
+    // when tlb request come->request mem, use root address in satp(or vsatp,hgatp) 
+    // this is first stage of traverse
     Mux(arb.io.out.fire(), Mux(arb.io.out.bits.bits.stage2, makeHypervisorRootPTE(io.dpath.hgatp, io.dpath.vsatp.ppn, r_pte), makePTE(satp.ppn, r_pte)),
     r_pte)))))))
+
 
   when (l2_hit && !l2_error) {
     assert(state === s_req || state === s_wait1)
@@ -627,16 +655,16 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     next_state := s_req
   }
 
-  when (do_switch) { // do_switch: switching from supervisor to hypervisor, default to false for no Virtual Machine
-    aux_count := Mux(traverse, count + 1.U, count)
-    count := r_hgatp_initial_count
-    aux_pte := Mux(traverse, pte, {
-      val s1_ppns = (0 until pgLevels-1).map(i => Cat(pte.ppn(pte.ppn.getWidth-1, (pgLevels-i-1)*pgLevelBits), r_req.addr(((pgLevels-i-1)*pgLevelBits min vpnBits)-1,0).padTo((pgLevels-i-1)*pgLevelBits))) :+ pte.ppn
-      makePTE(s1_ppns(count), pte)
-    })
-    aux_ppn_hi.foreach { _ := 0.U }
-    stage2 := true.B
-  }
+  // when (do_switch) { // do_switch: switching from supervisor to hypervisor, default to false for no Virtual Machine
+  //   aux_count := Mux(traverse, count + 1.U, count)
+  //   count := r_hgatp_initial_count
+  //   aux_pte := Mux(traverse, pte, {
+  //     val s1_ppns = (0 until pgLevels-1).map(i => Cat(pte.ppn(pte.ppn.getWidth-1, (pgLevels-i-1)*pgLevelBits), r_req.addr(((pgLevels-i-1)*pgLevelBits min vpnBits)-1,0).padTo((pgLevels-i-1)*pgLevelBits))) :+ pte.ppn
+  //     makePTE(s1_ppns(count), pte)
+  //   })
+  //   aux_ppn_hi.foreach { _ := 0.U }
+  //   stage2 := true.B
+  // }
 
   for (i <- 0 until pgLevels) {
     // val leaf = mem_resp_valid && !traverse && count === i.U 
