@@ -14,7 +14,7 @@ import ECPT.Debug._
 
 
 
-class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
+class PTWSkeletonSpec extends AnyFreeSpec with ChiselScalatestTester{
 
 
 
@@ -22,12 +22,17 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
     implicit val para: Parameters = boomParams
     var cycle = 0
     val base_state_num = 8
+    // val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
+    //   = Enum(base_state_num)
+    val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_req :: s_wait1 :: Nil 
+      = Enum(6)
         
 
     def writePTWReq(reqObj: DecoupledIO[Valid[PTWReq]], addr: Int, 
     need_gpa: Bool = false.B, vstage1: Bool = false.B, stage2: Bool = false.B) = {
         println(s"[writePTWReq]: addr: ${addr.toBinaryString} decimal: ${addr}")
-
+        reqObj.valid.poke(true)
+        reqObj.bits.valid.poke(true)
         val localReq = reqObj.bits.bits // this is the PTWReq object
         localReq.addr.poke(addr.U(27.W))
         localReq.need_gpa.poke(need_gpa) // this is always false == no virtual machine support
@@ -56,7 +61,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
           s"stage2: ${ArbOutMonitor.stage2.peek()}")
         println(s"[Debug: other logic]:vpn: ${other.vpn.peek()} " +
           s"do_both_stages: ${other.do_both_stages.peek()} " +
-          s"line_addr: ${other.line_addr.peek()}")
+          s"pte_addr: ${other.line_addr.peek()}")
 
     }
 
@@ -98,11 +103,20 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
         dut.clock.step()
     }
 
+    /*
+    * This section is commented out for cleanliness
+    * ------------------------------------------
+    * Test case for BOOM Page Table Walker (PTW) compilation
+    * 
+    * "PTWSkeleton should compile" in {
+    *     test(new BOOM_PTW(1)(para)) { c =>
+    *         println("SIMULATION [DONE]: compiled successfully")
+    *     }
+    * }
+    * ------------------------------------------
+    */
 
-    val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_req :: s_wait1 :: s_done :: Nil 
-      = Enum(7)
-
-    "BoomECPTSpec should hash complete within 28 cycles" in {
+    "PTWSkeleton should get request" in {
         test(new BOOM_PTW(1)(para) ) { c =>
             cycle = 0
             println("SIMULATION [Start]: write request to Boom_PTW")
@@ -112,67 +126,31 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             val requestor = c.io.requestor
             val memIO = c.io.mem
             requestor(0).req.valid.poke(false)
-            memIO.resp.valid.poke(false)
-            // printDebugInfo(debug)
-            // printMemIO(memIO)
+            printDebugInfo(debug)
+            printMemIO(memIO)
             stepClock(c)
             stepClock(c)
-            // printDebugInfo(debug)
+            printDebugInfo(debug)
             debug.ptwState.expect(s_ready)
             stepClock(c)
-            // printDebugInfo(debug)
+            printDebugInfo(debug)
             writePTWReq(requestor(0).req, vpnAddr, stage2 = true.B)
-            val reqObj = requestor(0).req
-            reqObj.valid.poke(true)
-            reqObj.bits.valid.poke(true)
-            println("[TEST] start hashing")
-            for (i <- 0 until 30) {
-                println(s"hash cycle ${i}")
-                stepClock(c)
-            }
             stepClock(c)
-            debug.ptwState.expect(s_traverse1)
-            stepClock(c) // one step without valid response 
-            memIO.resp.valid.poke(true)
-            for (i <- 0 until 4) {
-              stepClock(c) 
-            }
-            // one step without valid response
-            memIO.resp.valid.poke(false)
-            stepClock(c)  
-            for (i <- 0 until 10) {
-              stepClock(c) 
-            }
-            debug.ptwState.expect(s_traverse1)
+            debug.ptwState.expect(s_req)
+            printDebugInfo(debug)
+            printMemIO(memIO)
             stepClock(c)
-            // continue stepping to s_traverse2
-            memIO.resp.valid.poke(true)
-            for (i <- 0 until 6) {
-              stepClock(c) 
-            }
-            debug.ptwState.expect(s_traverse2)
+            // assume cache received request and set resp is ready
+            setCacheReqState(memIO, true.B)
+            printDebugInfo(debug)
+            printMemIO(memIO)
             stepClock(c)
-
-
-
-
-
-
-
-            // printDebugInfo(debug)
-            // printMemIO(memIO)
-            // stepClock(c)
-            // // assume cache received request and set resp is ready
-            // setCacheReqState(memIO, true.B)
-            // printDebugInfo(debug)
-            // printMemIO(memIO)
-            // stepClock(c)
-            // printDebugInfo(debug)
-            // printMemIO(memIO)
-            // debug.ptwState.expect(s_wait1)
-            // stepClock(c)
-            // printDebugInfo(debug)
-            // printMemIO(memIO)
+            printDebugInfo(debug)
+            printMemIO(memIO)
+            debug.ptwState.expect(s_wait1)
+            stepClock(c)
+            printDebugInfo(debug)
+            printMemIO(memIO)
             
 
         }
