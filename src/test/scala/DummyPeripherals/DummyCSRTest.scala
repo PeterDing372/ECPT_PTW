@@ -1,4 +1,4 @@
-package ECPT.DummmyPeriphrals
+package ECPT.DummyPeriphrals
 
 
 import chisel3._

@@ -9,7 +9,7 @@ import boom.lsu.BoomNonBlockingDCache
 import freechips.rocketchip.diplomacy._
 import ECPT.PTW._
 import ECPT.Debug._
-import ECPT.DummmyPeriphrals._
+import ECPT.DummyPeriphrals._
 
 
 class myTop (implicit p : Parameters) extends CoreModule()(p) {
@@ -23,7 +23,7 @@ class myTop (implicit p : Parameters) extends CoreModule()(p) {
     val dummyCSR = Module(new DummyCSR()(p))
     val dummyTLB = Module(new DummyTLB()(p))
     val staticMetaId = 0
-    // val dcache = Module(LazyModule(new BoomNonBlockingDCache(staticMetaId)).module)
+    val dcache = Module(LazyModule(new BoomNonBlockingDCache(staticMetaId)).module)
     val ptwPorts = ListBuffer(dummyTLB.io.ptw)
     ptw.io.dpath <> dummyCSR.io.dpath
     ptw.io.requestor <> ptwPorts.toSeq

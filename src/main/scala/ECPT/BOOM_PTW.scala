@@ -82,16 +82,12 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   // use TLB req as arbitor's input
   arb.io.in <> io.requestor.map(_.req)
   // receive req only when s_ready and not in refill
-  /* Operation stage print */
-  arb.io.out.ready := (state === s_ready) && !l2_refill_wire
-  printf("[BOOM PTW]: input valid: %d output valid: %d\n", 
-          io.requestor(0).req.valid,  arb.io.out.valid)
-  printf("[BOOM PTW]: output bits valid: %d output fire: %d\n", 
-          arb.io.out.bits.valid,  arb.io.out.fire())
+  
   /* Instantiate stage print */
   println(s"[Instantiation Start]")
   println(s"pgLevels: ${pgLevels} minPgLevels: ${minPgLevels}")
   println(s"hypervisorExtraAddrBits: ${hypervisorExtraAddrBits}")
+  // println(s"untagBits: ${untagBits}")
   println(s"[Instantiation End]")
   assert(!usingHypervisor && usingVM) // assert this is a single stage
 
@@ -102,6 +98,13 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
 
   val clock_en = state =/= s_ready || l2_refill_wire || arb.io.out.valid || io.dpath.sfence.valid || io.dpath.customCSRs.disableDCacheClockGate
   io.dpath.clock_enabled := usingVM.B && clock_en
+  /* Operation stage print */
+  arb.io.out.ready := (state === s_ready) && !l2_refill_wire
+  printf("[BOOM PTW, clock_en %d]: input valid: %d output valid: %d\n", 
+          clock_en,
+          io.requestor(0).req.valid,  arb.io.out.valid)
+  printf("[BOOM PTW]: output bits valid: %d output fire: %d\n", 
+          arb.io.out.bits.valid,  arb.io.out.fire())
   val gated_clock =
     if (!usingVM || !tileParams.dcache.get.clockGate) clock
     else ClockGate(clock, clock_en, "ptw_clock_gate")
@@ -464,6 +467,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     is (s_ready) {
       when (arb.io.out.fire()) {
         val satp_initial_count = pgLevels.U - minPgLevels.U - satp.additionalPgLevels
+        // initial count to start with: 3 - 3 - 0
         val vsatp_initial_count = pgLevels.U - minPgLevels.U - io.dpath.vsatp.additionalPgLevels
         val hgatp_initial_count = pgLevels.U - minPgLevels.U - io.dpath.hgatp.additionalPgLevels
         val aux_ppn             = Mux(arb.io.out.bits.bits.vstage1, io.dpath.vsatp.ppn, arb.io.out.bits.bits.addr)
@@ -507,6 +511,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
         pte_hit := true.B
       }.otherwise {
         next_state := Mux(io.mem.req.ready, s_wait1, s_req)
+        // requires receiver to be ready then goes to s_wait1 stage
+        printf("[BOOM_PTW]: s_req execution directly falls in last case, going to next state\n")
       }
     }
     is (s_wait1) {
@@ -535,10 +541,19 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     }
   }
 
-  val merged_pte = {
-    val superpage_masks = (0 until pgLevels).map(i => ((BigInt(1) << pte.ppn.getWidth) - (BigInt(1) << (pgLevels-1-i)*pgLevelBits)).U)
+  val merged_pte = { // TODO: this is something that merge hgatp and vsatp?
+    val superpage_masks = (0 until pgLevels).map(i => 
+                          ((BigInt(1) << pte.ppn.getWidth) - (BigInt(1) << (pgLevels-1-i)*pgLevelBits)).U)
+                          // (1 << 44) - (1 << ((2 - i) * 9))
     val superpage_mask = superpage_masks(Mux(stage2_final, max_count, (pgLevels-1).U))
-    val stage1_ppns = (0 until pgLevels-1).map(i => Cat(pte.ppn(pte.ppn.getWidth-1, (pgLevels-i-1)*pgLevelBits), aux_pte.ppn((pgLevels-i-1)*pgLevelBits-1,0))) :+ pte.ppn
+    /**
+      * get current level mask, stage_final == "only a stage 2 request", 
+      * max_count: aux_count max count
+      * pgLevels-1: 2
+      **/
+    val stage1_ppns = (0 until pgLevels-1).map(i => 
+                      Cat(pte.ppn(pte.ppn.getWidth-1, (pgLevels-i-1)*pgLevelBits), 
+                      aux_pte.ppn((pgLevels-i-1)*pgLevelBits-1,0))) :+ pte.ppn
     val stage1_ppn = stage1_ppns(count)
     makePTE(stage1_ppn & superpage_mask, aux_pte)
   }

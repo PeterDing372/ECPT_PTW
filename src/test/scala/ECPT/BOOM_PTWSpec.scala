@@ -39,6 +39,10 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
 
     }
 
+    def cacheReqState(memIO: HellaCacheIO, ReqReady: Bool): Unit = {
+      memIO.req.ready.poke(ReqReady)
+    }
+
     def printDebugInfo(debug: BOOM_PTW_DebugIO): Unit = {
         val PTWReqMonitor = debug.r_req_input
         val ArbOutMonitor = debug.r_req_arb
@@ -133,11 +137,17 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             debug.ptwState.expect(s_req)
             printDebugInfo(debug)
             printMemIO(memIO)
+
             stepClock(c)
             printDebugInfo(debug)
             printMemIO(memIO)
             stepClock(c)
             printDebugInfo(debug)
+            printMemIO(memIO)
+            stepClock(c)
+            printDebugInfo(debug)
+            printMemIO(memIO)
+
 
             /* TODO: Verify request stays on PTW reg or stays on IO */
 
