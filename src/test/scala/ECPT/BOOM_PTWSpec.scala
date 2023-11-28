@@ -39,7 +39,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
 
     }
 
-    def cacheReqState(memIO: HellaCacheIO, ReqReady: Bool): Unit = {
+    def setCacheReqState(memIO: HellaCacheIO, ReqReady: Bool): Unit = {
       memIO.req.ready.poke(ReqReady)
     }
 
@@ -137,16 +137,19 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             debug.ptwState.expect(s_req)
             printDebugInfo(debug)
             printMemIO(memIO)
-
             stepClock(c)
+            // assume cache received request and set resp is ready
+            setCacheReqState(memIO, true.B)
             printDebugInfo(debug)
             printMemIO(memIO)
             stepClock(c)
             printDebugInfo(debug)
             printMemIO(memIO)
+            debug.ptwState.expect(s_wait1)
             stepClock(c)
             printDebugInfo(debug)
             printMemIO(memIO)
+            
 
 
             /* TODO: Verify request stays on PTW reg or stays on IO */
@@ -155,12 +158,5 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
         }
 
     }
-
-    // class PTWReq(implicit p: Parameters) extends CoreBundle()(p) {
-    //     val addr = UInt(vpnBits.W)
-    //     val need_gpa = Bool()
-    //     val vstage1 = Bool()
-    //     val stage2 = Bool()
-    // }
     
 }
