@@ -24,7 +24,7 @@ class PTWSkeletonSpec extends AnyFreeSpec with ChiselScalatestTester{
     val base_state_num = 8
     // val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
     //   = Enum(base_state_num)
-    val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_req :: s_wait1 :: Nil 
+    val s_ready :: s_hashing :: s_traverse0 :: s_traverse1 :: s_req :: s_wait1 :: Nil 
       = Enum(6)
         
 
