@@ -17,6 +17,7 @@ import freechips.rocketchip.rocket._
 import ECPT.Params._
 import ECPT.Debug._
 import scala.collection.mutable.ListBuffer
+import freechips.rocketchip.diplomacy.BufferParams
 
 
 /** PTW contains L2TLB, and performs page table walk for high level TLB, and cache queries from L1 TLBs(I$, D$, RoCC)
@@ -106,7 +107,6 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val base_1GB = VecInit(0x4000.U(coreMaxAddrBits.W), 0x5000.U(coreMaxAddrBits.W))
   
 
-
   val resp_valid = RegNext(VecInit(Seq.fill(io.requestor.size)(false.B)))
 
   val clock_en = state =/= s_ready || l2_refill_wire || arb.io.out.valid || 
@@ -130,27 +130,15 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   /* -------- entering gated-clock domain --------- */
   val vpn_h1 = Reg(UInt(init_pt_bits.W))
   val vpn_h2 = Reg(UInt(init_pt_bits.W))
-  val cached_line_T1 = Reg(new ECPTE_CacheLine)
-  val cached_line_T2 = Reg(new ECPTE_CacheLine)
+  val cached_PTE_lines = VecInit(Reg(new EC_PTE_CacheLine), Reg(new EC_PTE_CacheLine))
+  // val cached_line_T1 = Reg(new EC_PTE_CacheLine)
+  // val cached_line_T2 = Reg(new EC_PTE_CacheLine)
   val traverse_count = Reg(UInt(lgCacheBlockBytes.W)) 
   // NOTE: this is reg because original mem_resp and data are reg
   val both_hashing_done = WireDefault(false.B)
-
-
-  /* Internal hardware modules */
-  val counter = Module(new CounterWithTrigger(8))
-  val H1_CRC = Module(new CRC_hash_FSM(init_pt_bits, H1_poly, vpnBits)) // n: Int, g: Long, data_len: Int
-  val H2_CRC = Module(new CRC_hash_FSM(init_pt_bits, H2_poly, vpnBits))
-
-  when (H1_CRC.io.done) {
-    vpn_h1 := H1_CRC.io.data_out
-  }
-  when (H2_CRC.io.done) {
-    vpn_h2 := H2_CRC.io.data_out
-  } 
-  
-  counter.io.trigger := io.mem.resp.valid && (state === s_traverse1 || state === s_traverse2)
-  traverse_count := counter.io.count
+  // TODO: check if original traverse logic can be removed
+  val line_addr = WireInit(0.U(coreMaxAddrBits.W))
+  val line_offset = WireInit(0.U(coreMaxAddrBits.W))
 
   val invalidated = Reg(Bool())
   /** current PTE level
@@ -224,6 +212,21 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     // invalid_paddr:  non-zero MSB bits larger than addrBits range is invalid 
   }
 
+   /* Internal ECPT hardware modules */
+  val counter = Module(new CounterWithTrigger(8))
+  val H1_CRC = Module(new CRC_hash_FSM(init_pt_bits, H1_poly, vpnBits)) // n: Int, g: Long, data_len: Int
+  val H2_CRC = Module(new CRC_hash_FSM(init_pt_bits, H2_poly, vpnBits))
+
+  when (H1_CRC.io.done) {
+    vpn_h1 := H1_CRC.io.data_out
+  }
+  when (H2_CRC.io.done) {
+    vpn_h2 := H2_CRC.io.data_out
+  } 
+  
+  counter.io.trigger := io.mem.resp.valid && (state === s_traverse1 || state === s_traverse2)
+  traverse_count := counter.io.count
+
   /* CRC Hash Control Signals */
   H1_CRC.io.start := (state === s_hashing)
   H2_CRC.io.start := (state === s_hashing)
@@ -232,32 +235,42 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   H1_CRC.io.data_in := Mux((state === s_hashing), r_req.addr, 0.U)
   H2_CRC.io.data_in := Mux((state === s_hashing), r_req.addr, 0.U)
 
-  // TODO: check if other traverse logic can be removed
-  val line_addr = WireInit(0.U(coreMaxAddrBits.W))
-  val line_offset = WireInit(0.U(coreMaxAddrBits.W))
 
   /* load pte to in-module register */
   when (mem_resp_valid) {
     when (state === s_traverse1) {
-      cached_line_T1.ptes(traverse_count) := pte
+      // cached_line_T1.ptes(traverse_count) := pte
+      cached_PTE_lines(0).ptes(traverse_count) := pte
     } .elsewhen (state === s_traverse2) {
-      cached_line_T2.ptes(traverse_count) := pte
+      // cached_line_T2.ptes(traverse_count) := pte
+      cached_PTE_lines(1).ptes(traverse_count) := pte
+
     }
     // assert(state === s_traverse1 || state === s_traverse2) 
     // TODO: uncomment this when PTW connect to actual cache
   }
 
 
+  // tag hit judgement
+  val ECPT_tag_hit = VecInit(Seq.fill(2)(false.B))
+  // val ECPT_hit_way = WireDefault(UInt(2.W)) // TODO: use UIntToOH for future
+  val match_tag = WireDefault(0.U(27.W)) // TODO: replace this to a vector?
+  val ECPT_hit_way = OHToUInt(ECPT_tag_hit)
+  // ECPT_tag_hit := // TODO complete this
+  for (way <- 0 until 2) { // TODO: replace the number 2 to a parameter in config/params
+    ECPT_tag_hit(way) := (cached_PTE_lines(way).fetchTag4KB === match_tag)
+    // TODO: try to assert one hot here? how to verify this
+  }
+  match_tag := r_req.addr(26, 0) // TODO: is this affected for larger pages? no just pad with zeros
+
+
+
+
+  
+
+
   /** stage2_pte_cache input addr */
   // TODO: remove all related logic to this
-  val stage2_pte_cache_addr = if (!usingHypervisor) 0.U else {
-    val vpn_idxs = (0 until pgLevels - 1).map { i =>
-      (r_req.addr >> (pgLevels - i - 1) * pgLevelBits)(pgLevelBits - 1, 0)
-    }
-    val vpn_idx  = vpn_idxs(aux_count)
-    val raw_s2_pte_cache_addr = Cat(aux_pte.ppn, vpn_idx) << log2Ceil(xLen / 8)
-    raw_s2_pte_cache_addr(vaddrBits.min(raw_s2_pte_cache_addr.getWidth) - 1, 0)
-  }
 
   def makeFragmentedSuperpagePPN(ppn: UInt): Seq[UInt] = {
     (pgLevels-1 until 0 by -1).map(i => Cat(ppn >> (pgLevelBits*i), r_req.addr(((pgLevelBits*i) min vpnBits)-1, 0).padTo(pgLevelBits*i)))
@@ -502,7 +515,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       line_addr := (vpn_h1  << 6) | base_4KB(0)
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
-      assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned") 
+      assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned")
       // TODO: this can be replace with property?
       // returns immediately when there is read access exception
       when (io.mem.s2_xcpt.ae.ld) { // potentially alignment exception
@@ -525,12 +538,13 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       }
     }
     is (s_done) { // consider change this to a success condition state
+      // TODO case to consider
       next_state := s_ready
     }
     is (s_req) {
-      when(stage2 && count === r_hgatp_initial_count) {
-        gpa_pgoff := Mux(aux_count === (pgLevels-1).U, r_req.addr << (xLen/8).log2, stage2_pte_cache_addr)
-      }
+      // when(stage2 && count === r_hgatp_initial_count) {
+      //   gpa_pgoff := Mux(aux_count === (pgLevels-1).U, r_req.addr << (xLen/8).log2, stage2_pte_cache_addr)
+      // }
       // pte_cache hit
       next_state := Mux(io.mem.req.ready, s_wait1, s_req)
       // requires receiver to be ready then goes to s_wait1 stage
@@ -728,8 +742,13 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   io.debug.other_logic.do_both_stages := do_both_stages
   io.debug.other_logic.line_addr := line_addr
   io.debug.other_logic.arbOutValid := arb.io.out.valid
-  io.debug.cached_line_T1 := cached_line_T1
-  io.debug.cached_line_T2 := cached_line_T2
+  io.debug.cached_line_T1 := cached_PTE_lines(0)// cached_line_T1
+  io.debug.cached_line_T2 := cached_PTE_lines(1)// cached_line_T2
+  io.debug.tagT1 := cached_PTE_lines(0).fetchTag4KB
+  io.debug.tagT2 := cached_PTE_lines(1).fetchTag4KB
+  io.debug.ECPT_tag_hit := ECPT_tag_hit
+
+  
   
 
   } 

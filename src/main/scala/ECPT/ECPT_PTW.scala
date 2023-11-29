@@ -25,11 +25,19 @@ import ECPT.Debug._
  * ECPTE_CacheLine holds the whole cache_line in a register 
  * to get tag match for ECPT 
  */
-class ECPTE_CacheLine (implicit p : Parameters) extends MyCoreBundle()(p) {
+class EC_PTE_CacheLine (implicit p : Parameters) extends MyCoreBundle()(p) {
   /* Contains a total of 8 PTE */
   val ptes = Vec(cacheBlockBytes/8, new PTE)
 
-  def fetchTag() : UInt = {
+  def fetchTag4KB : UInt = {
+    val first15 = ptes.take(5).map(_.reserved_for_future(2,0)).reduce((b,a) => Cat(a,b))
+    val second12 = ptes.takeRight(3).map(_.reserved_for_future(3,0)).reduce((b,a) => Cat(a,b))
+    Cat(second12.pad(12), first15.pad(15))
+  }
+  def fetchTag2MB : UInt = {
+    ptes.map(_.reserved_for_future(2,0)).reduce((b,a) => Cat(a,b))
+  }
+  def fetchTag1GB : UInt = {
     ptes.map(_.reserved_for_future(2,0)).reduce((b,a) => Cat(a,b))
   }
 
@@ -80,8 +88,8 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   val both_hashing_done = WireDefault(false.B)
   val counter_trigger = WireDefault(false.B)
   /* These are two register to cache the whole cacheline of ECPT PTE */
-  val cached_line_T1 = Reg(new ECPTE_CacheLine)
-  val cached_line_T2 = Reg(new ECPTE_CacheLine)
+  val cached_line_T1 = Reg(new EC_PTE_CacheLine)
+  val cached_line_T2 = Reg(new EC_PTE_CacheLine)
   val cache_valid = Wire(Bool())
   val cache_resp = Wire(new MyHellaCacheResp)
   val traverse_count = Wire(UInt(lgCacheBlockBytes.W))
