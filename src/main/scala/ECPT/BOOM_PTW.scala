@@ -205,17 +205,21 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       mem_resp_data := resp.bits.data
     }
   }
+
   // construct pte from mem.resp
   val (pte, invalid_paddr) = {
     val tmp = mem_resp_data.asTypeOf(new PTE())
     val res = WireDefault(tmp)
     res.ppn := Mux(do_both_stages && !stage2, tmp.ppn(vpnBits.min(tmp.ppn.getWidth)-1, 0), tmp.ppn(ppnBits-1, 0))
-    when (tmp.r || tmp.w || tmp.x) {
-      // for superpage mappings, make sure PPN LSBs are zero
-      for (i <- 0 until pgLevels-1)
-        when (count <= i.U && tmp.ppn((pgLevels-1-i)*pgLevelBits-1, (pgLevels-2-i)*pgLevelBits) =/= 0.U) { res.v := false.B }
-    }
+    // ppnBits: 32 - 12 = 20
+    // TODO: this is commented as ECPT has no mid-level PTE
+    // when (tmp.r || tmp.w || tmp.x) { // when it is NOT leaf PTE
+    //   // for superpage mappings, make sure PPN LSBs are zero
+    //   for (i <- 0 until pgLevels-1)
+    //     when (count <= i.U && tmp.ppn((pgLevels-1-i)*pgLevelBits-1, (pgLevels-2-i)*pgLevelBits) =/= 0.U) { res.v := false.B }
+    // }
     (res, Mux(do_both_stages && !stage2, (tmp.ppn >> vpnBits) =/= 0.U, (tmp.ppn >> ppnBits) =/= 0.U))
+    // invalid_paddr:  non-zero MSB bits larger than addrBits range is invalid 
   }
 
   /* CRC Hash Control Signals */
@@ -249,6 +253,10 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val traverse = false.B
   // val pte_addr = 0.U
   val line_addr = WireInit(0.U(coreMaxAddrBits.W))
+  val line_offset = WireInit(0.U(coreMaxAddrBits.W))
+  assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned") 
+
+  
   /* logic for controlling line_addr */
 
   
@@ -449,7 +457,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     s2_pte.w := s2_hit_entry.w
     s2_pte.r := s2_hit_entry.r
     s2_pte.v := true.B
-    s2_pte.reserved_for_future := 0.U
+    s2_pte.reserved_for_future := 0.U // TODO: change this to ECPT tag
     s2_pte.reserved_for_software := 0.U
 
     for (way <- 0 until coreParams.nL2TLBWays) {
@@ -470,7 +478,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   io.mem.req.bits.size := log2Ceil(xLen/8).U
   io.mem.req.bits.signed := false.B
   // io.mem.req.bits.addr := pte_addr
-  io.mem.req.bits.addr := line_addr
+  io.mem.req.bits.addr := (line_addr | line_offset) 
   // io.mem.req.bits.idx.foreach(_ := pte_addr) 
   io.mem.req.bits.idx.foreach(_ := line_addr) 
   // this is used if single cache bank is larger than page size
@@ -479,7 +487,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   io.mem.s1_kill := l2_hit || state =/= s_wait1 // TODO: replace with with condition of hit in PWC
   io.mem.s2_kill := false.B
 
-  val pageGranularityPMPs = pmpGranularity >= (1 << pgIdxBits)
+  val pageGranularityPMPs = pmpGranularity >= (1 << pgIdxBits) 
+  // checks that the pmpGranularity is larger than 4KB
   require(!usingHypervisor || pageGranularityPMPs, s"hypervisor requires pmpGranularity >= ${1<<pgIdxBits}")
 
 //   val pmaPgLevelHomogeneous = (0 until pgLevels) map { i =>
@@ -547,7 +556,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
         aux_count   := Mux(arb.io.out.bits.bits.vstage1, vsatp_initial_count, 0.U)
         aux_pte.ppn := aux_ppn
         aux_ppn_hi.foreach { _ := aux_ppn >> aux_pte.ppn.getWidth }
-        aux_pte.reserved_for_future := 0.U
+        aux_pte.reserved_for_future := 0.U // TODO: what to do with this?
         resp_ae_ptw := false.B
         resp_ae_final := false.B
         resp_pf := false.B
@@ -567,10 +576,29 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     is (s_traverse1) {
       // printf("[BOOM_PTW] reached s_traverse1\n")
       next_state := Mux(traverse_count === 7.U, s_traverse2, s_traverse1)
-      line_addr := (vpn_h1  << 6)| base_4KB(0)
+      line_addr := (vpn_h1  << 6) | base_4KB(0)
+      // check line_addr 64 byte alignment
+      line_offset := (1.U << 3) * (traverse_count)
+
+      // returns immediately when there is read access exception
+      when (io.mem.s2_xcpt.ae.ld) { // potentially alignment exception
+        resp_ae_ptw := true.B
+        next_state := s_ready
+        resp_valid(r_req_dest) := true.B
+      }
     }
     is (s_traverse2) {
       next_state := Mux(traverse_count === 7.U, s_done, s_traverse2)
+      line_addr := (vpn_h1  << 6) | base_4KB(1)
+      // check line_addr 64 byte alignment
+      line_offset := (1.U << 3) * (traverse_count)
+
+      // returns immediately when there is read access exception
+      when (io.mem.s2_xcpt.ae.ld) {
+        resp_ae_ptw := true.B
+        next_state := s_ready
+        resp_valid(r_req_dest) := true.B
+      }
     }
     is (s_req) {
       when(stage2 && count === r_hgatp_initial_count) {
@@ -615,7 +643,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     //   resp_valid(r_req_dest) := true.B
     //   when (!homogeneous) {
     //     count := (pgLevels-1).U
-    //     resp_fragmented_superpage := true.B
+    //     resp_fragmented_superpage := true.B 
+    // TODO: add resp_fragmented_superpage logic in hit judgement
     //   }
     //   when (do_both_stages) {
     //     resp_fragmented_superpage := true.B
@@ -654,8 +683,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   //   // when tlb request come->request mem, use root address in satp(or vsatp,hgatp)
   //   Mux(arb.io.out.fire(), Mux(arb.io.out.bits.bits.stage2, makeHypervisorRootPTE(io.dpath.hgatp, io.dpath.vsatp.ppn, r_pte), makePTE(satp.ppn, r_pte)),
   //   r_pte)))))))
-
-  r_pte := OptimizationBarrier( // result pte, TODO: replace condition for final hit to ECPT
+  // result pte is originally placed here for L2TLB judgement
+  r_pte := OptimizationBarrier( // TODO: replace condition for final hit to ECPT, 
     // l2tlb hit->find a leaf PTE(l2_pte), respond to L1TLB
     Mux(l2_hit && !l2_error, l2_pte,
     // pte cache hit->find a non-leaf PTE(pte_cache),continue to request mem
@@ -678,52 +707,59 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     next_state := s_ready
     resp_valid(r_req_dest) := true.B
     count := (pgLevels-1).U
-  }
-  // when (mem_resp_valid) {
-  //   // assert(state === s_wait3) // TODO: find something to replace this assert
-  //   next_state := s_req
-  //   when (traverse) { // add radix traverse, TODO: Replace with ECPT
-  //     when (do_both_stages && !stage2) { do_switch := true.B }
-  //     count := count + 1.U
-  //   }.otherwise {
-  //     val gf = stage2 && !stage2_final && !pte.ur()
-  //     val ae = pte.v && invalid_paddr
-  //     val pf = pte.v && pte.reserved_for_future =/= 0.U
-  //     val success = pte.v && !ae && !pf && !gf
+  } // TODO: check what to do with l2_hit
 
-  //     when (do_both_stages && !stage2_final && success) {
-  //       when (stage2) {
-  //         stage2 := false.B
-  //         count := aux_count
-  //       }.otherwise {
-  //         stage2_final := true.B
-  //         do_switch := true.B
-  //       }
-  //     }.otherwise {
-  //       // find a leaf pte, start l2 refill
-  //       l2_refill := success && count === (pgLevels-1).U && !r_req.need_gpa &&
-  //         (!r_req.vstage1 && !r_req.stage2 ||
-  //          do_both_stages && aux_count === (pgLevels-1).U && pte.isFullPerm())
-  //       count := max_count
+  when (mem_resp_valid) {
+    // assert(state === s_wait3) // TODO: find something to replace this assert
+    next_state := s_req // default to s_req, will be overrided
+    // when (traverse) { // TODO: Replace with ECPT, add radix traverse
+    //   when (do_both_stages && !stage2) { do_switch := true.B }
+    //   count := count + 1.U
+    // }.otherwise {
+      // guest page fault
+      val gf = stage2 && !stage2_final && !pte.ur()
+      // access exception
+      val ae = pte.v && invalid_paddr
+      // page fault
+      val pf = pte.v && pte.reserved_for_future(9,3) =/= 0.U
+      val success = pte.v && !ae && !pf && !gf 
+      // definition of success: 
 
-  //       // TODO: check what theses need to change
-  //       // when (pageGranularityPMPs.B && !(count === (pgLevels-1).U && (!do_both_stages || aux_count === (pgLevels-1).U))) {
-  //       //   next_state := s_fragment_superpage
-  //       // }.otherwise {
-  //       //   next_state := s_ready
-  //       //   resp_valid(r_req_dest) := true.B
-  //       // }
+      when (do_both_stages && !stage2_final && success) { 
+        // TODO: check this logic flow, currently !usingHypervisor so doesn't care
+        when (stage2) {
+          stage2 := false.B
+          count := aux_count
+        }.otherwise {
+          stage2_final := true.B
+          do_switch := true.B
+        }
+      }.otherwise { // find a leaf pte, start l2 refill
+        
+        // TODO: refill logic is also different
+        // l2_refill := success && count === (pgLevels-1).U && !r_req.need_gpa &&
+        //   (!r_req.vstage1 && !r_req.stage2 ||
+        //    do_both_stages && aux_count === (pgLevels-1).U && pte.isFullPerm())
+        count := max_count
+
+        // TODO: check what theses need to change
+        // when (pageGranularityPMPs.B && !(count === (pgLevels-1).U && (!do_both_stages || aux_count === (pgLevels-1).U))) {
+        //   next_state := s_fragment_superpage
+        // }.otherwise {
+          next_state := s_ready
+          resp_valid(r_req_dest) := true.B
+        // }
         
 
-  //       resp_ae_final := ae
-  //       resp_pf := pf && !stage2
-  //       resp_gf := gf || (pf && stage2)
-  //       resp_hr := !stage2 || (!pf && !gf && pte.ur())
-  //       resp_hw := !stage2 || (!pf && !gf && pte.uw())
-  //       resp_hx := !stage2 || (!pf && !gf && pte.ux())
-  //     }
-  //   }
-  // }
+        resp_ae_final := ae
+        resp_pf := pf && !stage2
+        resp_gf := gf || (pf && stage2)
+        resp_hr := !stage2 || (!pf && !gf && pte.ur())
+        resp_hw := !stage2 || (!pf && !gf && pte.uw())
+        resp_hx := !stage2 || (!pf && !gf && pte.ux())
+      }
+    // }
+  }
   when (io.mem.s2_nack) {
     // assert(state === s_wait2) // TODO: find something to replace this assert 
     next_state := s_req
@@ -746,9 +782,9 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     // this leaf signal controls condition for verification
     // TODO: check if any of these statement can be resused
     // currently hard-wire leaf to true
-    ccover(leaf && pte.v && !invalid_paddr && pte.reserved_for_future === 0.U, s"L$i", s"successful page-table access, level $i")
+    ccover(leaf && pte.v && !invalid_paddr && pte.reserved_for_future(9,3) === 0.U, s"L$i", s"successful page-table access, level $i")
     ccover(leaf && pte.v && invalid_paddr, s"L${i}_BAD_PPN_MSB", s"PPN too large, level $i")
-    ccover(leaf && pte.v && pte.reserved_for_future =/= 0.U, s"L${i}_BAD_RSV_MSB", s"reserved MSBs set, level $i")
+    ccover(leaf && pte.v && pte.reserved_for_future(9,3) =/= 0.U, s"L${i}_BAD_RSV_MSB", s"reserved MSBs set, level $i")
     ccover(leaf && !mem_resp_data(0), s"L${i}_INVALID_PTE", s"page not present, level $i")
     if (i != pgLevels-1)
       ccover(leaf && !pte.v && mem_resp_data(0), s"L${i}_BAD_PPN_LSB", s"PPN LSBs not zero, level $i")
