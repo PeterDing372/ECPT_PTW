@@ -23,6 +23,8 @@ class traverseLineSpec extends AnyFreeSpec with ChiselScalatestTester{
     implicit val para: Parameters = boomParams
     var cycle = 0
 
+    val util = ECPTTestUtils
+
     "traverseLine should update line" in {
         test(new traverseLine()(para) ) { c =>
             
@@ -50,7 +52,7 @@ class traverseLineSpec extends AnyFreeSpec with ChiselScalatestTester{
 
     "traverseLine should fetch tag" in {
         test(new traverseLine()(para) ) { c =>
-            
+            var tag : Long = 0
             c.clock.step()
             c.io.start.poke(true.B)
             c.clock.step()
@@ -58,9 +60,17 @@ class traverseLineSpec extends AnyFreeSpec with ChiselScalatestTester{
             for (i <- 0 until 8) {
                 println(s"write cycle ${i}")
                 c.io.data_in.valid.poke(true.B)
-                c.io.data_in.bits.poke(1.U)
+                c.io.data_in.bits.poke(util.formatPTE(0x2, 0x1))
+                if (i < 5) {
+                    tag = tag | 0x2.toLong << (3 * i)
+                } else {
+                    tag = tag | 0x2.toLong << (15 + 4 * (i-5))
+                }
+                c.io.tag_in.poke(tag.U)
+                println(s"[TEST] tag_in: ${tag.toBinaryString}")
                 c.clock.step()
                 println(s"[TEST] current tag: ${c.io.debug.tag.peek().litValue.toInt.toBinaryString}")
+                c.io.debug.tagMatch.expect(true)
             }
             c.clock.step()
         }

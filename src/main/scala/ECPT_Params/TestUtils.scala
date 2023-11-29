@@ -19,6 +19,9 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.subsystem._
 import boom.common.BoomTileAttachParams
+import freechips.rocketchip.rocket.HellaCacheIO
+import chiseltest.ChiselScalatestTester
+import org.scalatest.freespec.AnyFreeSpec
 
 // import boom.system._
 
@@ -131,5 +134,45 @@ object BoomTestUtils {
 
     outParams
   }
+}
+
+object ECPTTestUtils {
+  def formatPTE(reserved_for_future: Long,
+                  ppn: Long,
+                  reserved_for_software: Long = 0,
+                  d: Long = 0,
+                  a: Long = 0,
+                  g: Long = 0,
+                  u: Long = 0,
+                  x: Long = 0,
+                  w: Long = 0,
+                  r: Long = 1,
+                  v: Long = 0
+                  ): UInt = {
+      // var r_pte = UInt(64.W)
+      val r_pte = ((reserved_for_future << 54) | 
+                 (ppn << 10) | 
+                 (reserved_for_software << 8) | 
+                 (d << 7) | 
+                 (a << 6) | 
+                 (g << 5) | 
+                 (u << 4) | 
+                 (x << 3) | 
+                 (w << 2) | 
+                 (r << 1) | 
+                 v)
+      // println(s"[formatPTE] r_pte ${r_pte.toBinaryString}")
+      r_pte.U // & ~0.U(64.W)
+    }
+
+
+    def formRadixReqAddr(vpn2 : Int, vpn1 : Int, vpn0 : Int): Int = {
+        // this form SV39 scheme VPN
+        require(vpn2 < (1<<9) && vpn1 < (1<<9) && vpn0 < (1<<9))
+        val finalVPN = (vpn2 << 18) | (vpn1 << 9) | vpn0
+        finalVPN
+    }
+
+    
 }
 

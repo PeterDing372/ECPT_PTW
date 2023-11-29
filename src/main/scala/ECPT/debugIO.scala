@@ -5,7 +5,7 @@ import freechips.rocketchip.tile._
 import chisel3._
 import chisel3.util.{Arbiter, Cat, Decoupled, Enum, Mux1H, OHToUInt, PopCount, PriorityEncoder, PriorityEncoderOH, RegEnable, UIntToOH, Valid, is, isPow2, log2Ceil, switch}
 import ECPT.Params._
-import ECPT.PTW.ECPTE_CacheLine
+import ECPT.PTW.EC_PTE_CacheLine
 
 
 /* 
@@ -24,8 +24,11 @@ class BOOM_PTW_DebugIO(implicit p : Parameters) extends CoreBundle()(p) {
   val r_req_input = Output(new PTWReq)
   val r_req_arb = Output(new PTWReq)
   val ptwState = Output(UInt(4.W)) // max 15
-  val cached_line_T1 = Output(new ECPTE_CacheLine)
-  val cached_line_T2 = Output(new ECPTE_CacheLine)
+  val cached_line_T1 = Output(new EC_PTE_CacheLine)
+  val cached_line_T2 = Output(new EC_PTE_CacheLine)
+  val tagT1 = Output(UInt(27.W))
+  val tagT2 = Output(UInt(27.W))
+  val ECPT_tag_hit = Output(Vec(2, Bool()))
   val other_logic = new BOOM_PTW_logics
 }
 
