@@ -151,6 +151,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   counter.io.trigger := io.mem.resp.valid && (state === s_traverse1 || state === s_traverse2)
   traverse_count := counter.io.count
 
+
   
 
   val invalidated = Reg(Bool())
@@ -230,56 +231,14 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   H1_CRC.io.data_in := Mux((state === s_hashing), r_req.addr, 0.U)
   H2_CRC.io.data_in := Mux((state === s_hashing), r_req.addr, 0.U)
 
-  // find non-leaf PTE, need traverse
-  // val traverse = pte.table() && !invalid_paddr && count < (pgLevels-1).U
-  // /** address send to mem for enquerry */
-  // val pte_addr = if (!usingVM) 0.U else {
-  //   val vpn_idxs = (0 until pgLevels).map { i => // 0, 1, 2 
-  //     val width = pgLevelBits + (if (i <= pgLevels - minPgLevels) hypervisorExtraAddrBits else 0)
-  //     // width = 9 + 0
-  //     (vpn >> (pgLevels - i - 1) * pgLevelBits)(width - 1, 0)
-  //   }
-  //   val mask     = Mux(stage2 && count === r_hgatp_initial_count, 
-  //                   ((1 << (hypervisorExtraAddrBits + pgLevelBits)) - 1).U, ((1 << pgLevelBits) - 1).U)
-  //   // mask cover all bits in current vpn mask, e.g 0x1FF covers LSB 9 bits
-  //   val vpn_idx  = vpn_idxs(count) & mask
-  //   val raw_pte_addr = ((r_pte.ppn << pgLevelBits) | vpn_idx) << log2Ceil(xLen / 8)
-  //   val size = if (usingHypervisor) vaddrBits else paddrBits // paddrBits: 32
-  //   //use r_pte.ppn as page table base address
-  //   //use vpn slice as offset
-  //   raw_pte_addr.apply(size.min(raw_pte_addr.getWidth) - 1, 0)
-  // }
-
-  val traverse = false.B
-  // val pte_addr = 0.U
+  // TODO: check if other traverse logic can be removed
   val line_addr = WireInit(0.U(coreMaxAddrBits.W))
   val line_offset = WireInit(0.U(coreMaxAddrBits.W))
   assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned") 
 
-  
-  /* logic for controlling line_addr */
-
-  
-  // TODO: replace logic for pte_addr along with new states
-
-
-  /*
-  /** pte_cache input addr */
-  val pte_cache_addr = if (!usingHypervisor) pte_addr else {
-    val vpn_idxs = (0 until pgLevels-1).map { i =>
-      val ext_aux_pte_ppn = aux_ppn_hi match {
-        case None     => aux_pte.ppn
-        case Some(hi) => Cat(hi, aux_pte.ppn)
-      }
-      (ext_aux_pte_ppn >> (pgLevels - i - 1) * pgLevelBits)(pgLevelBits - 1, 0)
-    }
-    val vpn_idx = vpn_idxs(count)
-    val raw_pte_cache_addr = Cat(r_pte.ppn, vpn_idx) << log2Ceil(xLen/8)
-    raw_pte_cache_addr(vaddrBits.min(raw_pte_cache_addr.getWidth)-1, 0)
-  }
-  */
 
   /** stage2_pte_cache input addr */
+  // TODO: remove all related logic to this
   val stage2_pte_cache_addr = if (!usingHypervisor) 0.U else {
     val vpn_idxs = (0 until pgLevels - 1).map { i =>
       (r_req.addr >> (pgLevels - i - 1) * pgLevelBits)(pgLevelBits - 1, 0)
@@ -292,55 +251,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   def makeFragmentedSuperpagePPN(ppn: UInt): Seq[UInt] = {
     (pgLevels-1 until 0 by -1).map(i => Cat(ppn >> (pgLevelBits*i), r_req.addr(((pgLevelBits*i) min vpnBits)-1, 0).padTo(pgLevelBits*i)))
   }
-  /** PTECache caches non-leaf PTE
-    * @param s2 true: 2-stage address translation
-    */
-  /** --------------------------------------------
-  def makePTECache(s2: Boolean): (Bool, UInt) = if (coreParams.nPTECacheEntries == 0) {
-    (false.B, 0.U)
-  } else {
-    val plru = new PseudoLRU(coreParams.nPTECacheEntries)
-    val valid = RegInit(0.U(coreParams.nPTECacheEntries.W))
-    val tags = Reg(Vec(coreParams.nPTECacheEntries, UInt((if (usingHypervisor) 1 + vaddrBits else paddrBits).W)))
-    // not include full pte, only ppn
-    val data = Reg(Vec(coreParams.nPTECacheEntries, UInt((if (usingHypervisor && s2) vpnBits else ppnBits).W)))
-    val can_hit =
-      if (s2) count === r_hgatp_initial_count && aux_count < (pgLevels-1).U && r_req.vstage1 && stage2 && !stage2_final
-      else count < (pgLevels-1).U && Mux(r_req.vstage1, stage2, !r_req.stage2)
-    val can_refill =
-      if (s2) do_both_stages && !stage2 && !stage2_final
-      else can_hit
-    val tag =
-      if (s2) Cat(true.B, stage2_pte_cache_addr.padTo(vaddrBits))
-      else Cat(r_req.vstage1, pte_cache_addr.padTo(if (usingHypervisor) vaddrBits else paddrBits))
-
-    val hits = tags.map(_ === tag).asUInt & valid
-    val hit = hits.orR && can_hit
-    // refill with mem response
-    when (mem_resp_valid && traverse && can_refill && !hits.orR && !invalidated) {
-      val r = Mux(valid.andR, plru.way, PriorityEncoder(~valid))
-      valid := valid | UIntToOH(r)
-      tags(r) := tag
-      data(r) := pte.ppn
-      plru.access(r)
-    }
-    // replace
-    when (hit && state === s_req) { plru.access(OHToUInt(hits)) }
-    when (io.dpath.sfence.valid && (!io.dpath.sfence.bits.rs1 || usingHypervisor.B && io.dpath.sfence.bits.hg)) { valid := 0.U }
-
-    val lcount = if (s2) aux_count else count
-    for (i <- 0 until pgLevels-1) {
-      ccover(hit && state === s_req && lcount === i.U, s"PTE_CACHE_HIT_L$i", s"PTE cache hit, level $i")
-    }
-
-    (hit, Mux1H(hits, data))
-  }
-  --------------------------------- */
+ 
   
-  // generate pte_cache
-  // val (pte_cache_hit, pte_cache_data) = makePTECache(false)
-  // generate pte_cache with 2-stage translation
-  // val (stage2_pte_cache_hit, stage2_pte_cache_data) = (0.U, 0.U) // makePTECache(true)
   // pte_cache hit or 2-stage pte_cache hit
   val pte_hit = RegNext(false.B)
   io.dpath.perf.pte_miss := false.B
