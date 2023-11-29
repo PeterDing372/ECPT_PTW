@@ -77,7 +77,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
 
     val util = ECPTTestUtils
 
-    val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_req :: s_wait1 :: s_done :: Nil 
+    val s_ready :: s_hashing :: s_traverse0 :: s_traverse1 :: s_req :: s_wait1 :: s_done :: Nil 
       = Enum(7)
 
     "BoomECPTSpec should hash complete within 28 cycles" in {
@@ -112,7 +112,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
                 stepClock(c)
             }
             stepClock(c)
-            debug.ptwState.expect(s_traverse1)
+            debug.ptwState.expect(s_traverse0)
             stepClock(c) // one step without valid response 
             memIO.resp.valid.poke(true)
             memIO.resp.bits.data.poke(ECPTTestUtils.formatPTE(0x4, 0x1)) // true response
@@ -126,9 +126,9 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             for (i <- 0 until 10) {
               stepClock(c) 
             }
-            debug.ptwState.expect(s_traverse1)
+            debug.ptwState.expect(s_traverse0)
             stepClock(c)
-            // continue stepping to s_traverse2
+            // continue stepping to s_traverse1
             memIO.resp.valid.poke(true)
             memIO.resp.bits.data.poke(ECPTTestUtils.formatPTE(0x4, 0x1)) // true response
             for (i <- 0 until 4) {
@@ -136,7 +136,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             }
             memIO.resp.valid.poke(false)
             stepClock(c) 
-            debug.ptwState.expect(s_traverse2)
+            debug.ptwState.expect(s_traverse1)
             memIO.resp.valid.poke(true)
             memIO.resp.bits.data.poke(ECPTTestUtils.formatPTE(0x7, 0x2)) // true response
             for (i <- 0 until 8) {
@@ -183,7 +183,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
                 stepClock(c)
             }
             stepClock(c)
-            debug.ptwState.expect(s_traverse1)
+            debug.ptwState.expect(s_traverse0)
             stepClock(c) // one step without valid response 
             for (i <- 0 until 8) {
               memIO.resp.valid.poke(true)
@@ -192,7 +192,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             }
             memIO.resp.valid.poke(false)
             stepClock(c) 
-            debug.ptwState.expect(s_traverse2)
+            debug.ptwState.expect(s_traverse1)
             stepClock(c)  
             stepClock(c)
             for (i <- 0 until 8) {
@@ -239,7 +239,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
                 stepClock(c)
             }
             stepClock(c)
-            debug.ptwState.expect(s_traverse1)
+            debug.ptwState.expect(s_traverse0)
             stepClock(c) // one step without valid response 
             for (i <- 0 until 8) {
               memIO.resp.valid.poke(true)
@@ -251,11 +251,9 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
                 tag0 = tag0 | 0x4.toLong << (15 + 4 * (i-5))
               }
             }
-            println(s"[TEST] tag0: ${tag0.toBinaryString}")
-            println(s"[TEST] tag1: ${tag1.toBinaryString}")
             memIO.resp.valid.poke(false)
             stepClock(c) 
-            debug.ptwState.expect(s_traverse2)
+            debug.ptwState.expect(s_traverse1)
             stepClock(c)  
             stepClock(c)
             for (i <- 0 until 8) {
@@ -271,9 +269,14 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             memIO.resp.valid.poke(false)
             stepClock(c) 
             debug.ptwState.expect(s_done)
-            debug.tagT1.expect(tag0.U)
+            debug.tagT0.expect(tag0.U)
             debug.tagT1.expect(tag1.U)
+            println(s"[TEST] tag0: ${tag0.toBinaryString}")
+            println(s"[TEST] tag1: ${tag1.toBinaryString}")
+            println(s"[TEST] ptw tag0: ${debug.tagT0.peek().litValue.toLong.toBinaryString}")
+            println(s"[TEST] ptw tag1: ${debug.tagT1.peek().litValue.toLong.toBinaryString}")
             stepClock(c)
+            // 11_1011_1011_1111_1111_1111_1111
 
         }
     }

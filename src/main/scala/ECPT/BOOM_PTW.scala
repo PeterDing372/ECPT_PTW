@@ -76,7 +76,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val base_state_num = 8
   // val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
   //     = Enum(base_state_num)
-  val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_req :: s_wait1 :: s_done :: Nil 
+  val s_ready :: s_hashing :: s_traverse0 :: s_traverse1 :: s_req :: s_wait1 :: s_done :: Nil 
       = Enum(7)
   val state = RegInit(s_ready)
   val l2_refill_wire = Wire(Bool())
@@ -130,7 +130,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   /* -------- entering gated-clock domain --------- */
   val vpn_h1 = Reg(UInt(init_pt_bits.W))
   val vpn_h2 = Reg(UInt(init_pt_bits.W))
-  val cached_PTE_lines = VecInit(Reg(new EC_PTE_CacheLine), Reg(new EC_PTE_CacheLine))
+  val cached_PTE_lines = Reg(Vec(2, new EC_PTE_CacheLine))
   // val cached_line_T1 = Reg(new EC_PTE_CacheLine)
   // val cached_line_T2 = Reg(new EC_PTE_CacheLine)
   val traverse_count = Reg(UInt(lgCacheBlockBytes.W)) 
@@ -224,7 +224,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     vpn_h2 := H2_CRC.io.data_out
   } 
   
-  counter.io.trigger := io.mem.resp.valid && (state === s_traverse1 || state === s_traverse2)
+  counter.io.trigger := io.mem.resp.valid && (state === s_traverse0 || state === s_traverse1)
   traverse_count := counter.io.count
 
   /* CRC Hash Control Signals */
@@ -238,15 +238,15 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
 
   /* load pte to in-module register */
   when (mem_resp_valid) {
-    when (state === s_traverse1) {
+    when (state === s_traverse0) {
       // cached_line_T1.ptes(traverse_count) := pte
       cached_PTE_lines(0).ptes(traverse_count) := pte
-    } .elsewhen (state === s_traverse2) {
+    } .elsewhen (state === s_traverse1) {
       // cached_line_T2.ptes(traverse_count) := pte
       cached_PTE_lines(1).ptes(traverse_count) := pte
 
     }
-    // assert(state === s_traverse1 || state === s_traverse2) 
+    // assert(state === s_traverse0 || state === s_traverse1) 
     // TODO: uncomment this when PTW connect to actual cache
   }
 
@@ -408,7 +408,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   invalidated := io.dpath.sfence.valid || (invalidated && state =/= s_ready)
   // mem request
   // io.mem.req.valid := state === s_req 
-  io.mem.req.valid := state === s_traverse1 || state === s_traverse2
+  io.mem.req.valid := state === s_traverse0 || state === s_traverse1
   io.mem.req.bits.phys := true.B
   io.mem.req.bits.cmd  := M_XRD // read operation
   io.mem.req.bits.size := log2Ceil(xLen/8).U
@@ -507,11 +507,11 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       }
     }
     is (s_hashing) {
-      next_state := Mux(both_hashing_done, s_traverse1, s_hashing)
+      next_state := Mux(both_hashing_done, s_traverse0, s_hashing)
     }
-    is (s_traverse1) {
-      // printf("[BOOM_PTW] reached s_traverse1\n")
-      next_state := Mux(traverse_count === 7.U, s_traverse2, s_traverse1)
+    is (s_traverse0) {
+      // printf("[BOOM_PTW] reached s_traverse0\n")
+      next_state := Mux(traverse_count === 7.U, s_traverse1, s_traverse0)
       line_addr := (vpn_h1  << 6) | base_4KB(0)
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
@@ -524,8 +524,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
         resp_valid(r_req_dest) := true.B
       }
     }
-    is (s_traverse2) {
-      next_state := Mux(traverse_count === 7.U, s_done, s_traverse2)
+    is (s_traverse1) {
+      next_state := Mux(traverse_count === 7.U, s_done, s_traverse1)
       line_addr := (vpn_h1  << 6) | base_4KB(1)
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
@@ -744,8 +744,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   io.debug.other_logic.arbOutValid := arb.io.out.valid
   io.debug.cached_line_T1 := cached_PTE_lines(0)// cached_line_T1
   io.debug.cached_line_T2 := cached_PTE_lines(1)// cached_line_T2
-  io.debug.tagT1 := cached_PTE_lines(0).fetchTag4KB
-  io.debug.tagT2 := cached_PTE_lines(1).fetchTag4KB
+  io.debug.tagT0 := cached_PTE_lines(0).fetchTag4KB
+  io.debug.tagT1 := cached_PTE_lines(1).fetchTag4KB
   io.debug.ECPT_tag_hit := ECPT_tag_hit
 
   

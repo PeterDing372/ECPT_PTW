@@ -26,8 +26,8 @@ class BOOM_PTW_DebugIO(implicit p : Parameters) extends CoreBundle()(p) {
   val ptwState = Output(UInt(4.W)) // max 15
   val cached_line_T1 = Output(new EC_PTE_CacheLine)
   val cached_line_T2 = Output(new EC_PTE_CacheLine)
+  val tagT0 = Output(UInt(27.W))
   val tagT1 = Output(UInt(27.W))
-  val tagT2 = Output(UInt(27.W))
   val ECPT_tag_hit = Output(Vec(2, Bool()))
   val other_logic = new BOOM_PTW_logics
 }

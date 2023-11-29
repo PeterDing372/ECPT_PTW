@@ -69,7 +69,7 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   val H1_poly : Long = 0x119
   val H2_poly : Long = 0x17d
 
-  val s_ready :: s_hashing :: s_traverse1 :: s_traverse2 :: s_done :: Nil = Enum(5)
+  val s_ready :: s_hashing :: s_traverse0 :: s_traverse1 :: s_done :: Nil = Enum(5)
   val state_reg = RegInit(s_ready)
   val next_state = WireDefault(state_reg) 
   // WireDefault makes sure the next state will remain current state
@@ -105,7 +105,7 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   cache_resp := io.mem.resp.bits
   traverse_count := counter.io.count
   /* Cache request handling */
-  io.mem.req.valid := (state_reg === s_traverse1) || (state_reg === s_traverse2) 
+  io.mem.req.valid := (state_reg === s_traverse0) || (state_reg === s_traverse1) 
   // cache_req.ready := state_reg === 
 
   /* CRC module path statements */
@@ -120,7 +120,7 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
   
   io.requestor.req.ready := (state_reg === s_ready)
   counter.io.trigger := counter_trigger
-  counter_trigger := cache_valid && (state_reg === s_traverse1 || state_reg === s_traverse2)
+  counter_trigger := cache_valid && (state_reg === s_traverse0 || state_reg === s_traverse1)
 
 
   /* PTW FSM */
@@ -136,18 +136,18 @@ class ECPT_PTW(n: Int)(implicit p : Parameters) extends MyCoreModule()(p) {
     }
     /* Parallel Computation of hash values */
     is(s_hashing){
-      next_state := Mux(both_hashing_done, s_traverse1, s_hashing)
+      next_state := Mux(both_hashing_done, s_traverse0, s_hashing)
     }
     /* START: sequentially request the whole cacheline */
-    is (s_traverse1) {
-      next_state := Mux(traverse_count === 7.U, s_traverse2, s_traverse1)
+    is (s_traverse0) {
+      next_state := Mux(traverse_count === 7.U, s_traverse1, s_traverse0)
       /* Logic for on loading cache response to the cached_line_T{1,2} */
       when (cache_valid) {
         // cached_line_T1.ptes(traverse_count) := cache_resp.data
       }
     }
-    is (s_traverse2) {
-      next_state := Mux(traverse_count === 7.U, s_done, s_traverse2)
+    is (s_traverse1) {
+      next_state := Mux(traverse_count === 7.U, s_done, s_traverse1)
       when (cache_valid) {
         // cached_line_T2.ptes(traverse_count) := cache_resp.data
       }
