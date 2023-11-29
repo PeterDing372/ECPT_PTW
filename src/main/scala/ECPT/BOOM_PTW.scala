@@ -132,7 +132,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val vpn_h2 = Reg(UInt(init_pt_bits.W))
   val cached_line_T1 = Reg(new ECPTE_CacheLine)
   val cached_line_T2 = Reg(new ECPTE_CacheLine)
-  val traverse_count = Wire(UInt(lgCacheBlockBytes.W))
+  val traverse_count = Reg(UInt(lgCacheBlockBytes.W)) 
+  // NOTE: this is reg because original mem_resp and data are reg
   val both_hashing_done = WireDefault(false.B)
 
 
@@ -150,9 +151,6 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   
   counter.io.trigger := io.mem.resp.valid && (state === s_traverse1 || state === s_traverse2)
   traverse_count := counter.io.count
-
-
-  
 
   val invalidated = Reg(Bool())
   /** current PTE level
@@ -197,6 +195,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val vpn = Mux(r_req.vstage1 && stage2, aux_pte.ppn, r_req.addr)
 
   val mem_resp_valid = RegNext(io.mem.resp.valid)
+  // why are these reg? to reduce critical path!
   val mem_resp_data = RegNext(io.mem.resp.bits.data)
   io.mem.uncached_resp.map { resp =>
     assert(!(resp.valid && io.mem.resp.valid)) // at most one can be valid simultaneously 
@@ -208,10 +207,12 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   }
 
   // construct pte from mem.resp
-  val (pte, invalid_paddr) = {
+  val (pte, invalid_paddr) = { // TODO: in test spec check what PTE looks like
     val tmp = mem_resp_data.asTypeOf(new PTE())
     val res = WireDefault(tmp)
     res.ppn := Mux(do_both_stages && !stage2, tmp.ppn(vpnBits.min(tmp.ppn.getWidth)-1, 0), tmp.ppn(ppnBits-1, 0))
+    // res.reserved_for_future := tmp.reserved_for_future
+    // printf(s"[BOOM_PTW] reserved for future bits %d\n", tmp.reserved_for_future)
     // ppnBits: 32 - 12 = 20
     // TODO: this is commented as ECPT has no mid-level PTE
     // when (tmp.r || tmp.w || tmp.x) { // when it is NOT leaf PTE
@@ -234,7 +235,17 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   // TODO: check if other traverse logic can be removed
   val line_addr = WireInit(0.U(coreMaxAddrBits.W))
   val line_offset = WireInit(0.U(coreMaxAddrBits.W))
-  assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned") 
+
+  /* load pte to in-module register */
+  when (mem_resp_valid) {
+    when (state === s_traverse1) {
+      cached_line_T1.ptes(traverse_count) := pte
+    } .elsewhen (state === s_traverse2) {
+      cached_line_T2.ptes(traverse_count) := pte
+    }
+    // assert(state === s_traverse1 || state === s_traverse2) 
+    // TODO: uncomment this when PTW connect to actual cache
+  }
 
 
   /** stage2_pte_cache input addr */
@@ -402,7 +413,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val pageGranularityPMPs = pmpGranularity >= (1 << pgIdxBits) 
   // checks that the pmpGranularity is larger than 4KB
   require(!usingHypervisor || pageGranularityPMPs, s"hypervisor requires pmpGranularity >= ${1<<pgIdxBits}")
-
+  // TODO: how to make PMP PMA workm is this static?
 //   val pmaPgLevelHomogeneous = (0 until pgLevels) map { i =>
 //     val pgSize = BigInt(1) << (pgIdxBits + ((pgLevels - 1 - i) * pgLevelBits))
 //     if (pageGranularityPMPs && i == pgLevels - 1) {
@@ -491,7 +502,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       line_addr := (vpn_h1  << 6) | base_4KB(0)
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
-
+      assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned") 
+      // TODO: this can be replace with property?
       // returns immediately when there is read access exception
       when (io.mem.s2_xcpt.ae.ld) { // potentially alignment exception
         resp_ae_ptw := true.B
@@ -504,13 +516,16 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       line_addr := (vpn_h1  << 6) | base_4KB(1)
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
-
+      assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned") 
       // returns immediately when there is read access exception
       when (io.mem.s2_xcpt.ae.ld) {
         resp_ae_ptw := true.B
         next_state := s_ready
         resp_valid(r_req_dest) := true.B
       }
+    }
+    is (s_done) { // consider change this to a success condition state
+      next_state := s_ready
     }
     is (s_req) {
       when(stage2 && count === r_hgatp_initial_count) {
@@ -623,7 +638,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
 
   when (mem_resp_valid) {
     // assert(state === s_wait3) // TODO: find something to replace this assert
-    next_state := s_req // default to s_req, will be overrided
+    // next_state := s_req // default to s_req, will be overrided
     // when (traverse) { // TODO: Replace with ECPT, add radix traverse
     //   when (do_both_stages && !stage2) { do_switch := true.B }
     //   count := count + 1.U
@@ -658,8 +673,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
         // when (pageGranularityPMPs.B && !(count === (pgLevels-1).U && (!do_both_stages || aux_count === (pgLevels-1).U))) {
         //   next_state := s_fragment_superpage
         // }.otherwise {
-          next_state := s_ready
-          resp_valid(r_req_dest) := true.B
+          // next_state := s_ready
+          // resp_valid(r_req_dest) := true.B
         // }
         
 
@@ -713,6 +728,9 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   io.debug.other_logic.do_both_stages := do_both_stages
   io.debug.other_logic.line_addr := line_addr
   io.debug.other_logic.arbOutValid := arb.io.out.valid
+  io.debug.cached_line_T1 := cached_line_T1
+  io.debug.cached_line_T2 := cached_line_T2
+  
 
   } 
   /* ------------ leaving gated-clock domain ------------*/ 
