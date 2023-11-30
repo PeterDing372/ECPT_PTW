@@ -30,8 +30,10 @@ class EC_PTE_CacheLine (implicit p : Parameters) extends MyCoreBundle()(p) {
   val ptes = Vec(cacheBlockBytes/8, new PTE)
 
   def fetchTag4KB : UInt = {
-    val first15 = ptes.take(5).map(_.reserved_for_future(2,0)).reduce((b,a) => Cat(a,b))
-    val second12 = ptes.takeRight(3).map(_.reserved_for_future(3,0)).reduce((b,a) => Cat(a,b))
+    val first15 = ptes.take(5).map(_.reserved_for_future(2,0)).reduce((a,b) => Cat(b,a))
+    // .take returns ordering lsb to msb, thus reverse cat logic (bit0, bit1) => cat (bit1, bit0)
+    val second12 = ptes.takeRight(3).map(_.reserved_for_future(3,0)).reduce((a,b) => Cat(a,b))
+    // .takeRight returns ordering msb to lsb, thus, cat need to follow original ordering
     Cat(second12.pad(12), first15.pad(15))
   }
   def fetchTag2MB : UInt = {

@@ -22,8 +22,9 @@ import boom.common.BoomTileAttachParams
 import freechips.rocketchip.rocket.HellaCacheIO
 import chiseltest.ChiselScalatestTester
 import org.scalatest.freespec.AnyFreeSpec
+import scala.util.Random
 
-// import boom.system._
+
 
 /**
  * Factory object to help create a set of BOOM parameters to use in tests
@@ -188,6 +189,20 @@ object ECPTTestUtils {
             groups(i + 5) = bits27(26 - 4 * i, 23 - 4 * i).litValue.toInt
         }
         groups
+    }
+
+    def generateRandomBinaryString(): String = {
+        // Function to generate a random binary string of a given length
+        def randomBinaryGroup(length: Int): String = {
+            Seq.fill(length)(Random.nextInt(2)).mkString
+        }
+
+        // Generating random groups
+        val lsbGroups = (1 to 5).map(_ => randomBinaryGroup(3)).mkString("_")
+        val msbGroups = (1 to 3).map(_ => randomBinaryGroup(4)).mkString("_")
+
+        // Concatenating all parts
+        "b" + msbGroups + "_" + lsbGroups
     }
 
 
