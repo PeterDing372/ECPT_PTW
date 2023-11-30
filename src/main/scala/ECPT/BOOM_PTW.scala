@@ -195,7 +195,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   }
 
   // construct pte from mem.resp
-  val (pte, invalid_paddr) = { // TODO: in test spec check what PTE looks like
+  val (pte, invalid_paddr) = { 
     val tmp = mem_resp_data.asTypeOf(new PTE())
     val res = WireDefault(tmp)
     res.ppn := Mux(do_both_stages && !stage2, tmp.ppn(vpnBits.min(tmp.ppn.getWidth)-1, 0), tmp.ppn(ppnBits-1, 0))
@@ -255,12 +255,17 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val ECPT_tag_hit = VecInit(Seq.fill(2)(false.B))
   val match_tag = WireDefault(0.U(27.W)) // TODO: replace this to a vector?
   val ECPT_hit_way = OHToUInt(ECPT_tag_hit)
-  // ECPT_tag_hit := // TODO complete this
+  val ptw_has_hit = WireDefault(false.B)
+  val hit_pte = Wire(new PTE)
   for (way <- 0 until 2) { // TODO: replace the number 2 to a parameter in config/params
     ECPT_tag_hit(way) := (cached_PTE_lines(way).fetchTag4KB === match_tag)
     // TODO: try to assert one hot here? how to verify this
   }
   match_tag := r_req.addr(26, 0) // TODO: is this affected for larger pages? no just pad with zeros
+  val ECPT_tag_hit_AsInt = Cat(ECPT_tag_hit.reverse)
+  ptw_has_hit := ECPT_tag_hit_AsInt =/= 0.U 
+  hit_pte := cached_PTE_lines(ECPT_hit_way).ptes(line_offset)
+  // ptw_has_hit, hit_pte, 
   
 
 
@@ -627,19 +632,15 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   r_pte := OptimizationBarrier( // TODO: replace condition for final hit to ECPT, 
     // l2tlb hit->find a leaf PTE(l2_pte), respond to L1TLB
     Mux(l2_hit && !l2_error, l2_pte,
-    // pte cache hit->find a non-leaf PTE(pte_cache),continue to request mem
-    Mux(false.B, makePTE(0.U, l2_pte), // TODO: (remove) placeholder to keep things comparable to original
-    // 2-stage translation
-    Mux(do_switch, makeHypervisorRootPTE(r_hgatp, pte.ppn, r_pte), // TODO: (remove) do_switch: false
-    // when mem respond, store mem.resp.pte
-    Mux(mem_resp_valid, pte, 
+    // when parallel traverse hit, store mem.resp.pte to L2 and select
+    Mux(ptw_has_hit, hit_pte, 
     // fragment_superpage
     Mux(false.B && !homogeneous, makePTE(makeFragmentedSuperpagePPN(r_pte.ppn)(count), r_pte), 
     // TODO: assumed homogeneous
     // when tlb request come->request mem, use root address in satp(or vsatp,hgatp) 
     // this is first stage of traverse
     Mux(arb.io.out.fire(), Mux(arb.io.out.bits.bits.stage2, makeHypervisorRootPTE(io.dpath.hgatp, io.dpath.vsatp.ppn, r_pte), makePTE(satp.ppn, r_pte)),
-    r_pte)))))))
+    r_pte)))))
 
 
   when (l2_hit && !l2_error) {
