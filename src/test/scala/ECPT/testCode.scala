@@ -2,15 +2,8 @@ package ECPT.TestRegion
 import org.scalatest.funsuite.AnyFunSuite
 import chisel3._
 import chisel3.util._
-import chiseltest._
-import org.scalatest.freespec.AnyFreeSpec
-import freechips.rocketchip.system.DefaultConfig
-import freechips.rocketchip.system._
-import freechips.rocketchip.rocket._
-import chipsalliance.rocketchip.config._
-import ECPT_Test._
-import ECPT.Params._
-import ECPT.Debug._
+import scala.util.Random
+
 
 class TestRegion extends AnyFunSuite {
     def getBitGroups(value: UInt): Array[Int] = {
@@ -29,20 +22,39 @@ class TestRegion extends AnyFunSuite {
 
         groups
     }
+
+
+    def generateRandomBinaryString(): String = {
+        // Function to generate a random binary string of a given length
+        def randomBinaryGroup(length: Int): String = {
+            Seq.fill(length)(Random.nextInt(2)).mkString
+        }
+
+        // Generating random groups
+        val lsbGroups = (1 to 5).map(_ => randomBinaryGroup(3)).mkString("_")
+        val msbGroups = (1 to 3).map(_ => randomBinaryGroup(4)).mkString("_")
+
+        // Concatenating all parts
+        "b" + msbGroups + "_" + lsbGroups
+    }
   
     test("Example Test 1") {
         // assert(1 + 1 == 2)
-        val result = getBitGroups("b1111_1110_1100_1010_000_000_111_010_101".U)
+        val result = getBitGroups("b1110_1100_1010_000_000_111_010_101".U)
         for (i <- 0 until 8) {
             println(s"${result(i).toBinaryString}")
         }
         println("TEST REGION DONE")
     }
 
-    // test("Example Test 2") {
-    //     assert("Hello".toLowerCase == "hello")
-    // }
+    test("Example Test 2") {
+        // assert("Hello".toLowerCase == "hello")
+        for (i <- 0 until 10){
+            println(generateRandomBinaryString())
+        }
+        val test = generateRandomBinaryString()
+        println(s"${getBitGroups(test.U)(0)}")
+    }
   
-  // Add more tests as needed
 }
 
