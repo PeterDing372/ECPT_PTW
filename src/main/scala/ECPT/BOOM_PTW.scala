@@ -128,8 +128,9 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     else ClockGate(clock, clock_en, "ptw_clock_gate")
   withClock (gated_clock) { 
   /* -------- entering gated-clock domain --------- */
-  val vpn_h1 = Reg(UInt(init_pt_bits.W))
-  val vpn_h2 = Reg(UInt(init_pt_bits.W))
+  val hashed_vpns = Reg(Vec(2, UInt(init_pt_bits.W)))
+  // val hashed_vpns(0) = Reg(UInt(init_pt_bits.W))
+  // val hashed_vpns(1) = Reg(UInt(init_pt_bits.W))
   val cached_PTE_lines = Reg(Vec(2, new EC_PTE_CacheLine))
   // val cached_line_T1 = Reg(new EC_PTE_CacheLine)
   // val cached_line_T2 = Reg(new EC_PTE_CacheLine)
@@ -218,10 +219,10 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val H2_CRC = Module(new CRC_hash_FSM(init_pt_bits, H2_poly, vpnBits))
 
   when (H1_CRC.io.done) {
-    vpn_h1 := H1_CRC.io.data_out
+    hashed_vpns(0) := H1_CRC.io.data_out
   }
   when (H2_CRC.io.done) {
-    vpn_h2 := H2_CRC.io.data_out
+    hashed_vpns(1) := H2_CRC.io.data_out
   } 
   
   counter.io.trigger := io.mem.resp.valid && (state === s_traverse0 || state === s_traverse1)
@@ -264,12 +265,10 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   match_tag := r_req.addr(26, 0) // TODO: is this affected for larger pages? no just pad with zeros
   val ECPT_tag_hit_AsInt = Cat(ECPT_tag_hit.reverse)
   ptw_has_hit := ECPT_tag_hit_AsInt =/= 0.U 
-  hit_pte := cached_PTE_lines(ECPT_hit_way).ptes(line_offset)
+  assert(ECPT_hit_way < 2.U) // make sure hit way does not exceed limit
+  val pteInlineAddr = (hashed_vpns(ECPT_hit_way) & 0x38.U) >> 3 // TODO: fix this
+  hit_pte := cached_PTE_lines(ECPT_hit_way).ptes(pteInlineAddr)
   // ptw_has_hit, hit_pte, 
-  
-
-
-
   
 
 
@@ -516,7 +515,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     is (s_traverse0) {
       // printf("[BOOM_PTW] reached s_traverse0\n")
       next_state := Mux(traverse_count === 7.U, s_traverse1, s_traverse0)
-      line_addr := (vpn_h1  << 6) | base_4KB(0)
+      line_addr := (hashed_vpns(0)  << 6) | base_4KB(0)
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
       assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned")
@@ -530,7 +529,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     }
     is (s_traverse1) {
       next_state := Mux(traverse_count === 7.U, s_done, s_traverse1)
-      line_addr := (vpn_h1  << 6) | base_4KB(1)
+      line_addr := (hashed_vpns(0)  << 6) | base_4KB(1)
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
       assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned") 
@@ -649,6 +648,10 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     resp_valid(r_req_dest) := true.B
     count := (pgLevels-1).U
   } // TODO: check what to do with l2_hit
+
+  when (ptw_has_hit) {
+    resp_valid(r_req_dest) := true.B
+  }
 
   when (mem_resp_valid) {
     // assert(state === s_wait3) // TODO: find something to replace this assert
