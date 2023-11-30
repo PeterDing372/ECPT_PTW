@@ -253,7 +253,6 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
 
   // tag hit judgement
   val ECPT_tag_hit = VecInit(Seq.fill(2)(false.B))
-  // val ECPT_hit_way = WireDefault(UInt(2.W)) // TODO: use UIntToOH for future
   val match_tag = WireDefault(0.U(27.W)) // TODO: replace this to a vector?
   val ECPT_hit_way = OHToUInt(ECPT_tag_hit)
   // ECPT_tag_hit := // TODO complete this
@@ -262,7 +261,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     // TODO: try to assert one hot here? how to verify this
   }
   match_tag := r_req.addr(26, 0) // TODO: is this affected for larger pages? no just pad with zeros
-
+  
 
 
 
