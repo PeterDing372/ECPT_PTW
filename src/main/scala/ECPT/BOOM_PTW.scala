@@ -76,6 +76,17 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val base_state_num = 8
   // val s_ready :: s_req :: s_wait1 :: s_dummy1 :: s_wait2 :: s_wait3 :: s_dummy2 :: s_fragment_superpage :: Nil 
   //     = Enum(base_state_num)
+  /**
+    * ==ECPT State Machine==
+    * s_ready: ready to receive request from TLB
+    * s_traverse{0-5}: traverse cacheline for 4KB, 2MB, 1GB pages
+    * s_response: hit judgement, response PTE to tlb
+    *             no hit will for a formatted PTE with 
+    *             pf (page fault bit) set to response
+    * s_done: transition back to s_ready, 
+    *         this is when response to requstor is asserted 
+    *         and response is sent back
+  * */
   val s_ready :: s_hashing :: s_traverse0 :: s_traverse1 :: s_req :: s_wait1 :: s_done :: Nil 
       = Enum(7)
   val state = RegInit(s_ready)
@@ -101,10 +112,14 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val H1_poly : Long = 0x119
   val H2_poly : Long = 0x17d
 
-  // TODO: fix to compact regions, this is split into 4kb regions for readability 
-  val base_4KB = VecInit(0x0000.U(coreMaxAddrBits.W), 0x1000.U(coreMaxAddrBits.W))
-  val base_2MB = VecInit(0x2000.U(coreMaxAddrBits.W), 0x3000.U(coreMaxAddrBits.W))
-  val base_1GB = VecInit(0x4000.U(coreMaxAddrBits.W), 0x5000.U(coreMaxAddrBits.W))
+  // TODO: fix to compact regions, this is split into 4kb regions for readability
+  val DRAM_BASE : Long = 0x8000_0000L
+  val PT_BASE : Long = DRAM_BASE + 0x0200_0000L
+  /* All pages are 4KB aligned */
+  val base_4KB = VecInit((PT_BASE+0x0_0000L).U(coreMaxAddrBits.W), (PT_BASE+0x1_0000L).U(coreMaxAddrBits.W))
+  // val base_4KB = VecInit(0x0000.U(coreMaxAddrBits.W), 0x1000.U(coreMaxAddrBits.W))
+  // val base_2MB = VecInit(0x2000.U(coreMaxAddrBits.W), 0x3000.U(coreMaxAddrBits.W))
+  // val base_1GB = VecInit(0x4000.U(coreMaxAddrBits.W), 0x5000.U(coreMaxAddrBits.W))
   
 
   val resp_valid = RegNext(VecInit(Seq.fill(io.requestor.size)(false.B)))
@@ -200,7 +215,6 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     val tmp = mem_resp_data.asTypeOf(new PTE())
     val res = WireDefault(tmp)
     res.ppn := Mux(do_both_stages && !stage2, tmp.ppn(vpnBits.min(tmp.ppn.getWidth)-1, 0), tmp.ppn(ppnBits-1, 0))
-    // res.reserved_for_future := tmp.reserved_for_future
     // printf(s"[BOOM_PTW] reserved for future bits %d\n", tmp.reserved_for_future)
     // ppnBits: 32 - 12 = 20
     // TODO: this is commented as ECPT has no mid-level PTE
@@ -264,13 +278,15 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   }
   match_tag := r_req.addr(26, 0) // TODO: is this affected for larger pages? no just pad with zeros
   val ECPT_tag_hit_AsInt = Cat(ECPT_tag_hit.reverse)
-  ptw_has_hit := ECPT_tag_hit_AsInt =/= 0.U 
+  // TODO: add & condition for now can remove later
+  ptw_has_hit := ECPT_tag_hit_AsInt =/= 0.U && state === s_done 
   assert(ECPT_hit_way < 2.U) // make sure hit way does not exceed limit
-  val pteInlineAddr = (hashed_vpns(ECPT_hit_way) & 0x38.U) >> 3 // TODO: fix this
+  val blockOffsetMask = 0x38.U
+  /* hashed_vpns: 12-bits lower  */
+  val pteInlineAddr = (hashed_vpns(ECPT_hit_way) & blockOffsetMask) >> 3 
   hit_pte := cached_PTE_lines(ECPT_hit_way).ptes(pteInlineAddr)
   // ptw_has_hit, hit_pte, 
   
-
 
   /** stage2_pte_cache input addr */
   // TODO: remove all related logic to this
@@ -429,19 +445,19 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   val pageGranularityPMPs = pmpGranularity >= (1 << pgIdxBits) 
   // checks that the pmpGranularity is larger than 4KB
   require(!usingHypervisor || pageGranularityPMPs, s"hypervisor requires pmpGranularity >= ${1<<pgIdxBits}")
-  // TODO: how to make PMP PMA workm is this static?
-//   val pmaPgLevelHomogeneous = (0 until pgLevels) map { i =>
-//     val pgSize = BigInt(1) << (pgIdxBits + ((pgLevels - 1 - i) * pgLevelBits))
-//     if (pageGranularityPMPs && i == pgLevels - 1) {
-//       require(TLBPageLookup.homogeneous(edge.manager.managers, pgSize), s"All memory regions must be $pgSize-byte aligned")
-//       true.B
-//     } else {
-//       TLBPageLookup(edge.manager.managers, xLen, p(CacheBlockBytes), pgSize)(r_pte.ppn << pgIdxBits).homogeneous
-//     }
-//   }
-//   val pmaHomogeneous = pmaPgLevelHomogeneous(count)
-//   val pmpHomogeneous = new PMPHomogeneityChecker(io.dpath.pmp).apply(r_pte.ppn << pgIdxBits, count)
-//   val homogeneous = pmaHomogeneous && pmpHomogeneous
+  // TODO: how to make PMP PMA work is this static?
+  // val pmaPgLevelHomogeneous = (0 until pgLevels) map { i =>
+  //   val pgSize = BigInt(1) << (pgIdxBits + ((pgLevels - 1 - i) * pgLevelBits))
+  //   if (pageGranularityPMPs && i == pgLevels - 1) {
+  //     require(TLBPageLookup.homogeneous(edge.manager.managers, pgSize), s"All memory regions must be $pgSize-byte aligned")
+  //     true.B
+  //   } else {
+  //     TLBPageLookup(edge.manager.managers, xLen, p(CacheBlockBytes), pgSize)(r_pte.ppn << pgIdxBits).homogeneous
+  //   }
+  // }
+  // val pmaHomogeneous = pmaPgLevelHomogeneous(count)
+  // val pmpHomogeneous = new PMPHomogeneityChecker(io.dpath.pmp).apply(r_pte.ppn << pgIdxBits, count)
+  // val homogeneous = pmaHomogeneous && pmpHomogeneous
   val homogeneous = true.B // indicates if memory region share the same attribute
   // response to tlb
   for (i <- 0 until io.requestor.size) {
@@ -541,7 +557,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
       }
     }
     is (s_done) { // consider change this to a success condition state
-      // TODO case to consider
+      // TODO 
       next_state := s_ready
     }
     is (s_req) {
@@ -750,6 +766,8 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   io.debug.tagT0 := cached_PTE_lines(0).fetchTag4KB
   io.debug.tagT1 := cached_PTE_lines(1).fetchTag4KB
   io.debug.ECPT_tag_hit := ECPT_tag_hit
+  io.debug.ECPT_hit_way := ECPT_hit_way
+  io.debug.pteInlineAddr := pteInlineAddr
 
   
   

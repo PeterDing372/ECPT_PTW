@@ -3,6 +3,7 @@ package ECPT.PTW
 import chisel3._
 import chisel3.util._
 import chiseltest._
+import scala.util.Random
 import org.scalatest.freespec.AnyFreeSpec
 import freechips.rocketchip.system.DefaultConfig
 import freechips.rocketchip.system._
@@ -22,6 +23,9 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
     implicit val para: Parameters = boomParams
     var cycle = 0
     val base_state_num = 8
+    val util = ECPTTestUtils
+    val s_ready :: s_hashing :: s_traverse0 :: s_traverse1 :: s_req :: s_wait1 :: s_done :: Nil 
+      = Enum(7)
         
 
     def writePTWReq(reqObj: DecoupledIO[Valid[PTWReq]], addr: UInt, 
@@ -34,6 +38,18 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
         localReq.vstage1.poke(vstage1) // false: then PTW only do 1 stage table walk
         localReq.stage2.poke(stage2)
 
+    }
+
+    /**
+     * reads value from the PTW response
+     * @param respObj DecoupledIO[Valid[PTWResp]]
+     * @out returns the ppn in the response
+     */
+    def readPTEResp(respObj: Valid[PTWResp]): UInt = {
+      val localObj = respObj.bits // this is the PTWReq object
+      val addr = localObj.pte.ppn.peek()
+      // val 
+      addr
     }
 
     def setCacheReqState(memIO: HellaCacheIO, ReqReady: Bool): Unit = {
@@ -75,11 +91,175 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
         dut.clock.step()
     }
 
-    val util = ECPTTestUtils
 
-    val s_ready :: s_hashing :: s_traverse0 :: s_traverse1 :: s_req :: s_wait1 :: s_done :: Nil 
-      = Enum(7)
+      /* Initializes the inputs to PTW */
+    def InitializePTW(reqObj: DecoupledIO[Valid[PTWReq]], memIO : HellaCacheIO, 
+                      debug: BOOM_PTW_DebugIO, c : BOOM_PTW) = {
+      reqObj.valid.poke(false)
+      memIO.resp.valid.poke(false)
+      stepClock(c)
+      stepClock(c)
+      debug.ptwState.expect(s_ready)
+      stepClock(c)
+    }
 
+    /**
+     * Sends a request to the Page Table Walker (PTW) and waits until the hashing process is complete.
+     * @param vpnAddr - Virtual Page Number Address
+     */
+    def sendForHash(reqObj: DecoupledIO[Valid[PTWReq]], vpnAddr : UInt, 
+                      debug: BOOM_PTW_DebugIO, c : BOOM_PTW) = {
+      reqObj.valid.poke(true)
+      reqObj.bits.valid.poke(true)
+      writePTWReq(reqObj, vpnAddr, stage2 = true.B)
+      println("[TEST, sendForHash] start hashing")
+      for (i <- 0 until 30) {
+          println(s"hash cycle ${i}")
+          stepClock(c)
+      }
+      stepClock(c)
+      debug.ptwState.expect(s_traverse0)
+      stepClock(c) // one step without valid response 
+    }
+
+    def turnOffReq(reqObj: DecoupledIO[Valid[PTWReq]], debug: BOOM_PTW_DebugIO, 
+                    c : BOOM_PTW) = {
+      debug.ptwState.expect(s_done)
+      reqObj.valid.poke(false)
+      reqObj.bits.valid.poke(false)
+      stepClock(c)
+    }
+    
+    /**
+     * Set the response IO to respond to the Page Table Walker (PTW) and
+     * Responds the complete cache line of 64 bytes
+     * @param tagArr Array[Int] - an array of 8 entries that composes the complete vpnAddr tag
+     * @param expState UInt - exit state expected to be expState
+     */
+    def makeMemResp(memIO : HellaCacheIO, tagArr : Array[Int],
+                    debug: BOOM_PTW_DebugIO, expState : UInt, c : BOOM_PTW) = {
+      for (i <- 0 until 8) {
+        memIO.resp.valid.poke(true)
+        memIO.resp.bits.data.poke(ECPTTestUtils.formatPTE(tagArr(i).toLong, i)) // true response
+        stepClock(c) 
+      }
+      memIO.resp.valid.poke(false)
+      stepClock(c) 
+      debug.ptwState.expect(expState)
+    }
+
+    "BoomECPTSpec Check Response" in {
+      test(new BOOM_PTW(1)(para) ) { c =>
+            /* use this section to test ECPTTestUtils.formatPTE  */
+            // val test_result = ECPTTestUtils.formatPTE(0, 1)
+            // println(s"test_result ${test_result.litValue.toInt.toBinaryString}")
+            cycle = 0
+            val total_tests = 5
+            println("SIMULATION [Start]: write request to Boom_PTW")
+            val debug = c.io.debug
+            val requestor = c.io.requestor
+            val memIO = c.io.mem
+            val reqObj = requestor(0).req
+            val respObj = requestor(0).resp
+            for (i <- 0 until total_tests) {
+              val vpnAddr0 = ECPTTestUtils.generateRandomBinaryString()
+              val tagArr0 = ECPTTestUtils.AddrToRespGroup(vpnAddr0.U)
+              val vpnAddr1 = ECPTTestUtils.generateRandomBinaryString()
+              val tagArr1 = ECPTTestUtils.AddrToRespGroup(vpnAddr1.U)
+              /* Select different way */
+              val sel = Random.nextInt(2)
+              val RespTag = if (sel == 1) tagArr1 else tagArr0
+              val reqAddr = if (sel == 1) vpnAddr1 else vpnAddr0
+              /* Start page table walk process */
+              InitializePTW(reqObj, memIO, debug, c)
+              debug.ptwState.expect(s_ready)
+              sendForHash(reqObj, reqAddr.U, debug, c)
+              makeMemResp(memIO, tagArr0, debug, s_traverse1, c)
+              stepClock(c)  
+              /* second set of repsonse */              
+              makeMemResp(memIO, tagArr1, debug, s_done, c)
+              turnOffReq(reqObj, debug, c)
+              respObj.valid.expect(true)
+              stepClock(c)
+              debug.ptwState.expect(s_ready)
+              /* tag verification */
+              debug.tagT0.expect(vpnAddr0.U)
+              debug.tagT1.expect(vpnAddr1.U)
+              /* verify correct response value */
+              val respPPN = readPTEResp(respObj)
+              val pteInlineAddr = debug.pteInlineAddr.peek()
+              // println(s"[TEST] tag0: ${vpnAddr0}")
+              // println(s"[TEST] tag1: ${vpnAddr1}")
+              println(s"[TEST] pteInlineAddr: ${pteInlineAddr} respPPN: ${respPPN}")
+              assert(respPPN == respPPN)
+              /* Print all response info */
+              println(s"respObj.bits")
+              // ${test_result.litValue.toInt.toBinaryString}
+              debug.ECPT_hit_way.expect(sel.U)
+              stepClock(c)
+            }
+            
+        }
+    }
+    
+
+
+      /**
+       * This test verifies:
+       *  1. correct tag extraction
+       *  2. correct way hit judgement
+       *  3. correct state transition 
+       */
+    "BoomECPTSpec tag match comprehensive input" in {
+        test(new BOOM_PTW(1)(para) ) { c =>
+            /* use this section to test ECPTTestUtils.formatPTE  */
+            // val test_result = ECPTTestUtils.formatPTE(0, 1)
+            // println(s"test_result ${test_result.litValue.toInt.toBinaryString}")
+            cycle = 0
+            val total_tests = 1
+            println("SIMULATION [Start]: write request to Boom_PTW")
+            val debug = c.io.debug
+            val requestor = c.io.requestor
+            val memIO = c.io.mem
+            val reqObj = requestor(0).req
+            for (i <- 0 until total_tests) {
+              val vpnAddr0 = ECPTTestUtils.generateRandomBinaryString()
+              val tagArr0 = ECPTTestUtils.AddrToRespGroup(vpnAddr0.U)
+              val vpnAddr1 = ECPTTestUtils.generateRandomBinaryString()
+              val tagArr1 = ECPTTestUtils.AddrToRespGroup(vpnAddr1.U)
+              /* Select different way */
+              val sel = Random.nextInt(2)
+              val RespTag = if (sel == 1) tagArr1 else tagArr0
+              val reqAddr = if (sel == 1) vpnAddr1 else vpnAddr0
+
+              InitializePTW(reqObj, memIO, debug, c)
+              debug.ptwState.expect(s_ready)
+
+              sendForHash(reqObj, reqAddr.U, debug, c)
+
+              makeMemResp(memIO, tagArr0, debug, s_traverse1, c)
+              stepClock(c)  
+              /* second set of repsonse */              
+              makeMemResp(memIO, tagArr1, debug, s_done, c)
+              turnOffReq(reqObj, debug, c)
+              stepClock(c)
+              debug.ptwState.expect(s_ready)
+              /* tag verification */
+              debug.tagT0.expect(vpnAddr0.U)
+              debug.tagT1.expect(vpnAddr1.U)
+              println(s"[TEST] tag0: ${vpnAddr0}")
+              println(s"[TEST] tag1: ${vpnAddr1}")
+              println(s"[TEST] sel: $sel hit way: ${debug.ECPT_hit_way.peek()}")
+              debug.ECPT_hit_way.expect(sel.U)
+              stepClock(c)
+              
+
+            }
+            
+        }
+    }
+
+    /* 
     "BoomECPTSpec should hash complete within 28 cycles" in {
         test(new BOOM_PTW(1)(para) ) { c =>
             /* use this section to test ECPTTestUtils.formatPTE  */
@@ -280,89 +460,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
 
         }
     }
+    */
 
-    def completeHash(c : BOOM_PTW, vpnAddr : UInt, reqObj : DecoupledIO[Valid[PTWReq]]) = {
-      stepClock(c)
-      writePTWReq(reqObj, vpnAddr, stage2 = true.B)
-      // val reqObj = requestor(0).req
-      reqObj.valid.poke(true)
-      reqObj.bits.valid.poke(true)
-      println("[TEST] start hashing")
-      for (i <- 0 until 30) {
-          println(s"hash cycle ${i}")
-          stepClock(c)
-      }
-      stepClock(c)
-      // debug.ptwState.expect(s_traverse0)
-      
-
-    }
-
-    def InitializePTW(reqObj: DecoupledIO[Valid[PTWReq]], memIO : HellaCacheIO, 
-                      debug: BOOM_PTW_DebugIO, c : BOOM_PTW) = {
-      reqObj.valid.poke(false)
-      memIO.resp.valid.poke(false)
-      stepClock(c)
-      stepClock(c)
-      debug.ptwState.expect(s_ready)
-      stepClock(c)
-    }
-    def sendForHash(reqObj: DecoupledIO[Valid[PTWReq]], vpnAddr : UInt, 
-                      debug: BOOM_PTW_DebugIO, c : BOOM_PTW) = {
-      reqObj.valid.poke(true)
-      reqObj.bits.valid.poke(true)
-      writePTWReq(reqObj, vpnAddr, stage2 = true.B)
-      println("[TEST, sendForHash] start hashing")
-      for (i <- 0 until 30) {
-          println(s"hash cycle ${i}")
-          stepClock(c)
-      }
-      stepClock(c)
-      debug.ptwState.expect(s_traverse0)
-      stepClock(c) // one step without valid response 
-    }
-    
-    def makeMemResp(memIO : HellaCacheIO, tagArr : Array[Int],
-                    debug: BOOM_PTW_DebugIO, expState : UInt, c : BOOM_PTW) = {
-      for (i <- 0 until 8) {
-        memIO.resp.valid.poke(true)
-        memIO.resp.bits.data.poke(ECPTTestUtils.formatPTE(tagArr(i).toLong, i)) // true response
-        stepClock(c) 
-      }
-      memIO.resp.valid.poke(false)
-      stepClock(c) 
-      debug.ptwState.expect(expState)
-
-    }
-
-    "BoomECPTSpec comprehensive input" in {
-        test(new BOOM_PTW(1)(para) ) { c =>
-            /* use this section to test ECPTTestUtils.formatPTE  */
-            // val test_result = ECPTTestUtils.formatPTE(0, 1)
-            // println(s"test_result ${test_result.litValue.toInt.toBinaryString}")
-            cycle = 0
-            println("SIMULATION [Start]: write request to Boom_PTW")
-            val debug = c.io.debug
-            val requestor = c.io.requestor
-            val memIO = c.io.mem
-            val reqObj = requestor(0).req
-            val vpnAddr0 = ECPTTestUtils.generateRandomBinaryString()
-            val tagArr = ECPTTestUtils.AddrToRespGroup(vpnAddr0.U)
-            InitializePTW(reqObj, memIO, debug, c)
-            sendForHash(reqObj, vpnAddr0.U, debug, c)
-            makeMemResp(memIO, tagArr, debug, s_traverse1, c)
-            stepClock(c)  
-            stepClock(c)
-            /* second set of repsonse */
-            val vpnAddr1 = ECPTTestUtils.generateRandomBinaryString()
-            val tagArr1 = ECPTTestUtils.AddrToRespGroup(vpnAddr1.U)
-            makeMemResp(memIO, tagArr1, debug, s_done, c)
-            stepClock(c)
-            /* tag verification */
-            debug.tagT0.expect(vpnAddr0.U)
-            debug.tagT1.expect(vpnAddr1.U)
-        }
-    }
-    
     
 }

@@ -29,6 +29,8 @@ class BOOM_PTW_DebugIO(implicit p : Parameters) extends CoreBundle()(p) {
   val tagT0 = Output(UInt(27.W))
   val tagT1 = Output(UInt(27.W))
   val ECPT_tag_hit = Output(Vec(2, Bool()))
+  val ECPT_hit_way = Output(UInt(2.W))
+  val pteInlineAddr = Output(UInt())
   val other_logic = new BOOM_PTW_logics
 }
 
