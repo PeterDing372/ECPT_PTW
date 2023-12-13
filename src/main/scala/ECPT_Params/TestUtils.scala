@@ -137,7 +137,17 @@ object BoomTestUtils {
   }
 }
 
+
 object ECPTTestUtils {
+  /**
+   * Format an 64 bit PTE base on the given inputs
+   * @param reserved_for_future Long 
+   * @param ppn Long - physical page number
+   * @param x Long - execute permission
+   * @param w Long - write permission
+   * @param r Long - read permission
+   *  
+  */
   def formatPTE(reserved_for_future: Long,
                   ppn: Long,
                   reserved_for_software: Long = 0,
