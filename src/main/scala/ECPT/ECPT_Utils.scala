@@ -6,8 +6,11 @@ import chisel3.withClock
 import chisel3.internal.sourceinfo.SourceInfo
 import chipsalliance.rocketchip.config._
 import ECPT.Params._
+import freechips.rocketchip.rocket.PTE
+import freechips.rocketchip.tile.CoreModule
 
 /* -------------------- ECPT Utils -------------------- */
+
 /**
  * Calculates the CRC for a stream of data.
  *
@@ -108,17 +111,17 @@ class CRC_hash_FSM(n: Int, g: Long, data_len: Int)(implicit p: Parameters) exten
   io.done := (state_reg === s_done)
 
   // Debug
-  if (debug_flag) {
-    printf("-------- CRC INFO START --------\n")
-    printf("start: %d state_reg: %d next_state: %d crc_counter.io.trigger: %d crc_counter.io.counter: %d \n" +
-            "to_hash: %d bitIn: %d io.data_in: %d io.data_out: %d lfsr_en: %d io.debug: %d\n" +
-            "done: %d\n", 
-          io.start, state_reg, next_state, crc_counter.io.trigger, crc_counter.io.count,
-          to_hash, bitIn, io.data_in, io.data_out, lfsr_en, io.debug, 
-          io.done)
-    printf("-------- CRC INFO END --------\n")
+  // if (debug_flag) {
+  //   printf("-------- CRC INFO START --------\n")
+  //   printf("start: %d state_reg: %d next_state: %d crc_counter.io.trigger: %d crc_counter.io.counter: %d \n" +
+  //           "to_hash: %d bitIn: %d io.data_in: %d io.data_out: %d lfsr_en: %d io.debug: %d\n" +
+  //           "done: %d\n", 
+  //         io.start, state_reg, next_state, crc_counter.io.trigger, crc_counter.io.count,
+  //         to_hash, bitIn, io.data_in, io.data_out, lfsr_en, io.debug, 
+  //         io.done)
+  //   printf("-------- CRC INFO END --------\n")
 
-  }
+  // }
   
 }
 
@@ -145,5 +148,27 @@ class CounterWithTrigger(n: Int) extends Module {
 
   // Output the counter value
   io.count := counter
+
+}
+
+/* 
+ * ECPTE_CacheLine holds the whole cache_line in a register 
+ * to get tag match for ECPT 
+ */
+class EC_PTE_CacheLine (implicit p : Parameters) extends MyCoreBundle()(p) {
+  /* Contains a total of 8 PTE */
+  val ptes = Vec(cacheBlockBytes/8, new PTE)
+
+  def fetchTag4KB : UInt = {
+    ptes.map(_.reserved_for_future(2,0)).reduce((a, b) => Cat(b, a))
+    // .takeRight returns ordering msb to lsb, thus, cat need to follow original ordering
+    // Cat(second12.pad(12), first15.pad(15))
+  }
+  def fetchTag2MB : UInt = {
+    ptes.map(_.reserved_for_future(2,0)).reduce((b,a) => Cat(a,b))
+  }
+  def fetchTag1GB : UInt = {
+    ptes.map(_.reserved_for_future(2,0)).reduce((b,a) => Cat(a,b))
+  }
 
 }

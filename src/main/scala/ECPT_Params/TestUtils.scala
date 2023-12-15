@@ -186,20 +186,15 @@ object ECPTTestUtils {
 
 
     def AddrToRespGroup(value: UInt): Array[Int] = {
-        val bits27 = value(26, 0)  // Ensure the UInt is 27 bits wide
-        val groups = new Array[Int](8)
+      val bits27 = value(26, 0)  // Ensure the UInt is 27 bits wide
+      val groups = new Array[Int](8)
 
-        // Extracting 5 groups of 3 bits from LSB
-        for (i <- 0 until 5) {
-            groups(i) = bits27(3 * i + 2, 3 * i).litValue.toInt
-        }
-
-        // Extracting 3 groups of 4 bits from MSB
-        for (i <- 0 until 3) {
-            groups(i + 5) = bits27(26 - 4 * i, 23 - 4 * i).litValue.toInt
-        }
-        groups
-    }
+      // Extracting 8 groups of 3 bits each, ignoring the lower 3 bits
+      for (i <- 0 until 8) {
+          groups(i) = bits27(3 * i + 5, 3 * i + 3).litValue.toInt
+      }
+      groups
+  }
 
     def generateRandomBinaryString(): String = {
         // Function to generate a random binary string of a given length

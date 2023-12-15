@@ -15,7 +15,7 @@ import ECPT.Debug._
 
 
 
-class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
+class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester {
 
 
 
@@ -112,6 +112,9 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
       reqObj.valid.poke(true)
       reqObj.bits.valid.poke(true)
       writePTWReq(reqObj, vpnAddr, stage2 = true.B)
+      stepClock(c)
+      reqObj.valid.poke(false)
+
       println("[TEST, sendForHash] start hashing")
       for (i <- 0 until 30) {
           println(s"hash cycle ${i}")
@@ -148,6 +151,67 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
       debug.ptwState.expect(expState)
     }
 
+
+    /**
+     * This test verifies:
+     *  1. ptw continues after valid de-asserted
+     */
+    // "BoomECPTSpec de-assert req valid" in {
+    //   test(new BOOM_PTW(1)(para) ) { c =>
+    //         /* use this section to test ECPTTestUtils.formatPTE  */
+    //         // val test_result = ECPTTestUtils.formatPTE(0, 1)
+    //         // println(s"test_result ${test_result.litValue.toInt.toBinaryString}")
+    //         cycle = 0
+    //         val total_tests = 5
+    //         println("SIMULATION [Start]: write request to Boom_PTW")
+    //         val debug = c.io.debug
+    //         val requestor = c.io.requestor
+    //         val memIO = c.io.mem
+    //         val reqObj = requestor(0).req
+    //         val respObj = requestor(0).resp
+    //         val vpnAddr0 = ECPTTestUtils.generateRandomBinaryString()
+    //         val tagArr0 = ECPTTestUtils.AddrToRespGroup(vpnAddr0.U)
+    //         val vpnAddr1 = ECPTTestUtils.generateRandomBinaryString()
+    //         val tagArr1 = ECPTTestUtils.AddrToRespGroup(vpnAddr1.U)
+    //         /* Select different way */
+    //         val sel = Random.nextInt(2)
+    //         val RespTag = if (sel == 1) tagArr1 else tagArr0
+    //         val reqAddr = if (sel == 1) vpnAddr1 else vpnAddr0
+    //         /* Start page table walk process */
+    //         InitializePTW(reqObj, memIO, debug, c)
+    //         debug.ptwState.expect(s_ready)
+    //         sendForHash(reqObj, reqAddr.U, debug, c)
+    //         makeMemResp(memIO, tagArr0, debug, s_traverse1, c)
+    //         stepClock(c)  
+    //         /* second set of repsonse */              
+    //         makeMemResp(memIO, tagArr1, debug, s_done, c)
+    //         turnOffReq(reqObj, debug, c)
+    //         respObj.valid.expect(true)
+    //         stepClock(c)
+    //         debug.ptwState.expect(s_ready)
+    //         /* tag verification */
+    //         debug.tagT0.expect(vpnAddr0.U)
+    //         debug.tagT1.expect(vpnAddr1.U)
+    //         /* verify correct response value */
+    //         val respPPN = readPTEResp(respObj)
+    //         val pteInlineAddr = debug.pteInlineAddr.peek()
+    //         // println(s"[TEST] tag0: ${vpnAddr0}")
+    //         // println(s"[TEST] tag1: ${vpnAddr1}")
+    //         println(s"[TEST] pteInlineAddr: ${pteInlineAddr} respPPN: ${respPPN}")
+    //         assert(respPPN == respPPN)
+    //         /* Print all response info */
+    //         println(s"respObj.bits")
+    //         // ${test_result.litValue.toInt.toBinaryString}
+    //         debug.ECPT_hit_way.expect(sel.U)
+    //         stepClock(c)
+            
+    //     }
+    // }
+
+    /**
+     * This test verifies:
+     *  1. response fetches correct offset from cacheline
+     */
     "BoomECPTSpec Check Response" in {
       test(new BOOM_PTW(1)(para) ) { c =>
             /* use this section to test ECPTTestUtils.formatPTE  */
@@ -183,8 +247,8 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
               stepClock(c)
               debug.ptwState.expect(s_ready)
               /* tag verification */
-              debug.tagT0.expect(vpnAddr0.U)
-              debug.tagT1.expect(vpnAddr1.U)
+              debug.tagT0.expect(((vpnAddr0.U.litValue.toInt & 0xFFFFFFF8)>>3).U)
+              debug.tagT1.expect(((vpnAddr1.U.litValue.toInt & 0xFFFFFFF8)>>3).U)
               /* verify correct response value */
               val respPPN = readPTEResp(respObj)
               val pteInlineAddr = debug.pteInlineAddr.peek()
@@ -216,7 +280,7 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
             // val test_result = ECPTTestUtils.formatPTE(0, 1)
             // println(s"test_result ${test_result.litValue.toInt.toBinaryString}")
             cycle = 0
-            val total_tests = 1
+            val total_tests = 20
             println("SIMULATION [Start]: write request to Boom_PTW")
             val debug = c.io.debug
             val requestor = c.io.requestor
@@ -245,8 +309,8 @@ class BoomECPTSpec extends AnyFreeSpec with ChiselScalatestTester{
               stepClock(c)
               debug.ptwState.expect(s_ready)
               /* tag verification */
-              debug.tagT0.expect(vpnAddr0.U)
-              debug.tagT1.expect(vpnAddr1.U)
+              debug.tagT0.expect(((vpnAddr0.U.litValue.toInt & 0xFFFFFFF8)>>3).U)
+              debug.tagT1.expect(((vpnAddr1.U.litValue.toInt & 0xFFFFFFF8)>>3).U)
               println(s"[TEST] tag0: ${vpnAddr0}")
               println(s"[TEST] tag1: ${vpnAddr1}")
               println(s"[TEST] sel: $sel hit way: ${debug.ECPT_hit_way.peek()}")
