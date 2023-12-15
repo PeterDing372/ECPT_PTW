@@ -14,7 +14,6 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.rocket._
-import ECPT.Params._
 import ECPT.Debug._
 import scala.collection.mutable.ListBuffer
 import freechips.rocketchip.diplomacy.BufferParams
@@ -276,14 +275,14 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     ECPT_tag_hit(way) := (cached_PTE_lines(way).fetchTag4KB === match_tag)
     // TODO: try to assert one hot here? how to verify this
   }
-  match_tag := r_req.addr(26, 0) // TODO: is this affected for larger pages? no just pad with zeros
+  match_tag := r_req.addr(26, 3) // TODO: is this affected for larger pages? no just pad with zeros
   val ECPT_tag_hit_AsInt = Cat(ECPT_tag_hit.reverse)
   // TODO: add & condition for now can remove later
   ptw_has_hit := ECPT_tag_hit_AsInt =/= 0.U && state === s_done 
   assert(ECPT_hit_way < 2.U) // make sure hit way does not exceed limit
-  val blockOffsetMask = 0x38.U
-  /* hashed_vpns: 12-bits lower  */
-  val pteInlineAddr = (hashed_vpns(ECPT_hit_way) & blockOffsetMask) >> 3 
+  val blockOffsetMask = 0x38.U // which 8 byte block
+  /* hashed_vpns: in line offset is the lower 3 bits */
+  val pteInlineAddr = (hashed_vpns(ECPT_hit_way) & 0x3.U)
   hit_pte := cached_PTE_lines(ECPT_hit_way).ptes(pteInlineAddr)
   // ptw_has_hit, hit_pte, 
   
@@ -531,10 +530,10 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     is (s_traverse0) {
       // printf("[BOOM_PTW] reached s_traverse0\n")
       next_state := Mux(traverse_count === 7.U, s_traverse1, s_traverse0)
-      line_addr := (hashed_vpns(0)  << 6) | base_4KB(0)
+      line_addr := (hashed_vpns(0) & "hFFFFFFF8".U) | base_4KB(0)
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
-      assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned")
+      assert((line_addr & 0x3.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned")
       // TODO: this can be replace with property?
       // returns immediately when there is read access exception
       when (io.mem.s2_xcpt.ae.ld) { // potentially alignment exception
@@ -545,10 +544,11 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     }
     is (s_traverse1) {
       next_state := Mux(traverse_count === 7.U, s_done, s_traverse1)
-      line_addr := (hashed_vpns(0)  << 6) | base_4KB(1)
+      // remove lower 3 bits for 64 byte alignment
+      line_addr := (hashed_vpns(0) & "hFFFFFFF8".U) | base_4KB(1) 
       // check line_addr 64 byte alignment
       line_offset := (1.U << 3) * (traverse_count)
-      assert((line_addr & 0x3F.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned") 
+      assert((line_addr & 0x3.U) === 0.U, "[BOOM_PTW] line_addr not 64 byte aligned")
       // returns immediately when there is read access exception
       when (io.mem.s2_xcpt.ae.ld) {
         resp_ae_ptw := true.B
