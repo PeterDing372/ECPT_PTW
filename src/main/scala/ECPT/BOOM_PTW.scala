@@ -282,7 +282,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   assert(ECPT_hit_way < 2.U) // make sure hit way does not exceed limit
   val blockOffsetMask = 0x38.U // which 8 byte block
   /* hashed_vpns: in line offset is the lower 3 bits */
-  val pteInlineAddr = (hashed_vpns(ECPT_hit_way) & 0x3.U)
+  val pteInlineAddr = (hashed_vpns(ECPT_hit_way) & 0x7.U)
   hit_pte := cached_PTE_lines(ECPT_hit_way).ptes(pteInlineAddr)
   // ptw_has_hit, hit_pte, 
   
