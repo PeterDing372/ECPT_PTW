@@ -14,7 +14,7 @@ import ECPT.DummyPeriphrals._
 
 class myTop (implicit p : Parameters) extends CoreModule()(p) {
     val io = IO(new Bundle{
-        val debug = new BOOM_PTW_DebugIO
+        val debug = new PTW_DebugIO
     })
     val ptw  = Module(new BOOM_PTW(1)(p))
     // ptw.io.requestor := DontCare

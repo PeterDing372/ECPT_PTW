@@ -55,7 +55,7 @@ import freechips.rocketchip.diplomacy.BufferParams
   * @todo details in two-stage translation
   */
 class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) { 
-    // implicit edge: TLEdgeOut,
+  // implicit edge: TLEdgeOut,
   val io = IO(new Bundle {
     /** to n TLB */
     val requestor = Flipped(Vec(n, new TLBPTWIO))
@@ -69,7 +69,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     /** debug io ports
      * 
     */
-    val debug = new BOOM_PTW_DebugIO
+    val debug = new PTW_DebugIO
   })
 
   val base_state_num = 8
@@ -797,20 +797,3 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
   
 
 }
-
-// /** Mix-ins for constructing tiles that might have a PTW */
-// trait CanHavePTW extends HasTileParameters with HasHellaCache { this: BaseTile =>
-//   val module: CanHavePTWModule
-//   var nPTWPorts = 1
-//   nDCachePorts += usingPTW.toInt
-// }
-
-// trait CanHavePTWModule extends HasHellaCacheModule {
-//   val outer: CanHavePTW
-//   val ptwPorts = ListBuffer(outer.dcache.module.io.ptw)
-//   val ptw = Module(new PTW(outer.nPTWPorts)(outer.dcache.node.edges.out(0), outer.p))
-//   ptw.io.mem <> DontCare
-//   if (outer.usingPTW) {
-//     dcachePorts += ptw.io.mem
-//   }
-// }
