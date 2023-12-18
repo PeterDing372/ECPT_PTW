@@ -13,7 +13,7 @@ git clone https://github.com/PeterDing372/ECPT_PTW.git
 cd ECPT_PTW
 ```
 
-#### Set project organization and name in build.sbt
+#### Using build.sbt
 
 
 To run the included test with:
