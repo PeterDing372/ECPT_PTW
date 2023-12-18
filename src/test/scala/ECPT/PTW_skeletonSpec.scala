@@ -45,7 +45,7 @@ class PTWSkeletonSpec extends AnyFreeSpec with ChiselScalatestTester{
       memIO.req.ready.poke(ReqReady)
     }
 
-    def printDebugInfo(debug: BOOM_PTW_DebugIO): Unit = {
+    def printDebugInfo(debug: PTW_DebugIO): Unit = {
         val PTWReqMonitor = debug.r_req_input
         val ArbOutMonitor = debug.r_req_arb
         val other = debug.other_logic

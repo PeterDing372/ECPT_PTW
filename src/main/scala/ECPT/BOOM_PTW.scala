@@ -69,7 +69,7 @@ class BOOM_PTW(n: Int)(implicit p: Parameters) extends CoreModule()(p) {
     /** debug io ports
      * 
     */
-    val debug = new BOOM_PTW_DebugIO
+    val debug = new PTW_DebugIO
   })
 
   val base_state_num = 8

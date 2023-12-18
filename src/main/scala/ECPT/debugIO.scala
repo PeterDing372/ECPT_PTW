@@ -20,7 +20,7 @@ class debugPorts_PTW (implicit p : Parameters) extends MyCoreBundle()(p) {
 }
 
 
-class BOOM_PTW_DebugIO(implicit p : Parameters) extends CoreBundle()(p) {
+class PTW_DebugIO(implicit p : Parameters) extends CoreBundle()(p) {
   val r_req_input = Output(new PTWReq)
   val r_req_arb = Output(new PTWReq)
   val ptwState = Output(UInt(4.W)) // max 15

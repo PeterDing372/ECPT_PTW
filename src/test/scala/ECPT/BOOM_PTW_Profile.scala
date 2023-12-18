@@ -56,7 +56,7 @@ class BoomECPTEval extends AnyFreeSpec with ChiselScalatestTester {
       memIO.req.ready.poke(ReqReady)
     }
 
-    def printDebugInfo(debug: BOOM_PTW_DebugIO): Unit = {
+    def printDebugInfo(debug: PTW_DebugIO): Unit = {
         val PTWReqMonitor = debug.r_req_input
         val ArbOutMonitor = debug.r_req_arb
         val other = debug.other_logic
@@ -94,7 +94,7 @@ class BoomECPTEval extends AnyFreeSpec with ChiselScalatestTester {
 
       /* Initializes the inputs to PTW */
     def InitializePTW(reqObj: DecoupledIO[Valid[PTWReq]], memIO : HellaCacheIO, 
-                      debug: BOOM_PTW_DebugIO, c : BOOM_PTW) = {
+                      debug: PTW_DebugIO, c : BOOM_PTW) = {
       reqObj.valid.poke(false)
       memIO.resp.valid.poke(false)
       stepClock(c)
@@ -108,7 +108,7 @@ class BoomECPTEval extends AnyFreeSpec with ChiselScalatestTester {
      * @param vpnAddr - Virtual Page Number Address
      */
     def sendForHash(reqObj: DecoupledIO[Valid[PTWReq]], vpnAddr : UInt, 
-                      debug: BOOM_PTW_DebugIO, c : BOOM_PTW) = {
+                      debug: PTW_DebugIO, c : BOOM_PTW) = {
       reqObj.valid.poke(true)
       reqObj.bits.valid.poke(true)
       writePTWReq(reqObj, vpnAddr, stage2 = true.B)
@@ -125,7 +125,7 @@ class BoomECPTEval extends AnyFreeSpec with ChiselScalatestTester {
       stepClock(c) // one step without valid response 
     }
 
-    def turnOffReq(reqObj: DecoupledIO[Valid[PTWReq]], debug: BOOM_PTW_DebugIO, 
+    def turnOffReq(reqObj: DecoupledIO[Valid[PTWReq]], debug: PTW_DebugIO, 
                     c : BOOM_PTW) = {
       // debug.ptwState.expect(s_done)
       reqObj.valid.poke(false)
@@ -140,7 +140,7 @@ class BoomECPTEval extends AnyFreeSpec with ChiselScalatestTester {
      * @param expState UInt - exit state expected to be expState
      */
     def makeMemResp(memIO : HellaCacheIO, tagArr : Array[Int],
-                    debug: BOOM_PTW_DebugIO, expState : UInt, c : BOOM_PTW) = {
+                    debug: PTW_DebugIO, expState : UInt, c : BOOM_PTW) = {
       for (i <- 0 until 8) {
         memIO.resp.valid.poke(true)
         memIO.resp.bits.data.poke(ECPTTestUtils.formatPTE(tagArr(i).toLong, i)) // true response
